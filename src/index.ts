@@ -3,6 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { getConfigDir, loadWorkspaces, loadDirectoryMap } from "./config.js";
 import { WorkspaceRegistry } from "./workspace.js";
 import { registerDiscoveryTools, type ToolDeps } from "./tools/discovery.js";
+import { registerMessagingTools } from "./tools/messaging.js";
 
 export function createServer(): McpServer {
   return new McpServer({ name: "slack-mcp", version: "0.1.0" });
@@ -24,6 +25,7 @@ async function main() {
   const server = createServer();
   const deps = buildDeps();
   registerDiscoveryTools(server, deps);
+  registerMessagingTools(server, deps);
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
