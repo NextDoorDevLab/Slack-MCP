@@ -86,4 +86,120 @@ describe("discovery tools", () => {
 
     rmSync(deps.configDir, { recursive: true, force: true });
   });
+
+  it("paginates list_channels across multiple pages via response_metadata.next_cursor", async () => {
+    const fakeClient = {
+      users: { list: vi.fn() },
+      conversations: {
+        list: vi
+          .fn()
+          .mockResolvedValueOnce({
+            channels: [{ id: "C01", name: "general" }],
+            response_metadata: { next_cursor: "cursor-1" },
+          })
+          .mockResolvedValueOnce({
+            channels: [{ id: "C02", name: "random" }],
+            response_metadata: { next_cursor: "" },
+          }),
+      },
+    };
+    const deps = makeDeps(fakeClient);
+    const server = new McpServer({ name: "test", version: "0.0.0" });
+    registerDiscoveryTools(server, deps);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const listChannels = (server as any)._registeredTools["list_channels"];
+    const result = await listChannels.handler(
+      { workspace: "playfield" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any
+    );
+
+    expect(fakeClient.conversations.list).toHaveBeenCalledTimes(2);
+    expect(fakeClient.conversations.list).toHaveBeenNthCalledWith(1, {
+      types: "public_channel,private_channel",
+      cursor: undefined,
+    });
+    expect(fakeClient.conversations.list).toHaveBeenNthCalledWith(2, {
+      types: "public_channel,private_channel",
+      cursor: "cursor-1",
+    });
+    expect(JSON.parse(result.content[0].text)).toEqual([
+      { id: "C01", name: "general" },
+      { id: "C02", name: "random" },
+    ]);
+
+    // Both pages' channels should have been cached, so resolve finds page 2's channel too.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resolve = (server as any)._registeredTools["resolve"];
+    const resolveResult = await resolve.handler(
+      { name: "random", kind: "channels", workspace: "playfield" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any
+    );
+    expect(JSON.parse(resolveResult.content[0].text)).toEqual({
+      workspace: "playfield",
+      status: "found",
+      id: "C02",
+    });
+
+    rmSync(deps.configDir, { recursive: true, force: true });
+  });
+
+  it("paginates list_users across multiple pages via response_metadata.next_cursor", async () => {
+    const fakeClient = {
+      users: {
+        list: vi
+          .fn()
+          .mockResolvedValueOnce({
+            members: [{ id: "U01", name: "john", real_name: "John Smith" }],
+            response_metadata: { next_cursor: "cursor-1" },
+          })
+          .mockResolvedValueOnce({
+            members: [{ id: "U02", name: "jane", real_name: "Jane Doe" }],
+            response_metadata: {},
+          }),
+      },
+      conversations: { list: vi.fn() },
+    };
+    const deps = makeDeps(fakeClient);
+    const server = new McpServer({ name: "test", version: "0.0.0" });
+    registerDiscoveryTools(server, deps);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const listUsers = (server as any)._registeredTools["list_users"];
+    const result = await listUsers.handler(
+      { workspace: "playfield" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any
+    );
+
+    expect(fakeClient.users.list).toHaveBeenCalledTimes(2);
+    expect(fakeClient.users.list).toHaveBeenNthCalledWith(1, {
+      cursor: undefined,
+    });
+    expect(fakeClient.users.list).toHaveBeenNthCalledWith(2, {
+      cursor: "cursor-1",
+    });
+    expect(JSON.parse(result.content[0].text)).toEqual([
+      { id: "U01", name: "john", realName: "John Smith" },
+      { id: "U02", name: "jane", realName: "Jane Doe" },
+    ]);
+
+    // Both pages' users should have been cached, so resolve finds page 2's user too.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resolve = (server as any)._registeredTools["resolve"];
+    const resolveResult = await resolve.handler(
+      { name: "jane", kind: "users", workspace: "playfield" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any
+    );
+    expect(JSON.parse(resolveResult.content[0].text)).toEqual({
+      workspace: "playfield",
+      status: "found",
+      id: "U02",
+    });
+
+    rmSync(deps.configDir, { recursive: true, force: true });
+  });
 });

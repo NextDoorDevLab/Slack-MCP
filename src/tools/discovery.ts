@@ -9,6 +9,7 @@ import {
   resolveFromCache,
   upsertCacheEntry,
 } from "../cache.js";
+import { paginateSlack } from "../slack-pagination.js";
 
 export interface ToolDeps {
   configDir: string;
@@ -37,13 +38,19 @@ export function registerDiscoveryTools(
         deps.workspaces
       );
       const { client } = deps.registry.get(ws);
-      const res = await client.conversations.list({
-        types: "public_channel,private_channel",
+      const channels = await paginateSlack(async (cursor) => {
+        const res = await client.conversations.list({
+          types: "public_channel,private_channel",
+          cursor,
+        });
+        return {
+          items: (res.channels ?? []).map((c) => ({
+            id: c.id!,
+            name: c.name!,
+          })),
+          nextCursor: res.response_metadata?.next_cursor || undefined,
+        };
       });
-      const channels = (res.channels ?? []).map((c) => ({
-        id: c.id!,
-        name: c.name!,
-      }));
 
       const cache = loadCache(deps.configDir, ws);
       for (const c of channels)
@@ -66,14 +73,19 @@ export function registerDiscoveryTools(
         deps.workspaces
       );
       const { client } = deps.registry.get(ws);
-      const res = await client.users.list({});
-      const users = (res.members ?? [])
-        .filter((u) => !u.deleted && !u.is_bot)
-        .map((u) => ({
-          id: u.id!,
-          name: u.name!,
-          realName: u.real_name ?? u.name!,
-        }));
+      const users = await paginateSlack(async (cursor) => {
+        const res = await client.users.list({ cursor });
+        return {
+          items: (res.members ?? [])
+            .filter((u) => !u.deleted && !u.is_bot)
+            .map((u) => ({
+              id: u.id!,
+              name: u.name!,
+              realName: u.real_name ?? u.name!,
+            })),
+          nextCursor: res.response_metadata?.next_cursor || undefined,
+        };
+      });
 
       const cache = loadCache(deps.configDir, ws);
       for (const u of users) {
