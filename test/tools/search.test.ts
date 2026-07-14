@@ -29,9 +29,9 @@ describe("search_messages", () => {
     registerSearchTools(server, deps);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tool = (server as any)._registeredTools["search_messages"];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await tool.handler(
       { query: "found it", workspace: "playfield" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       {} as any
     );
 
