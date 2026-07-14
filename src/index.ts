@@ -35,15 +35,26 @@ function buildDeps(): ToolDeps & { rateLimiter: SlidingWindowRateLimiter } {
   };
 }
 
-async function main() {
-  const server = createServer();
-  const deps = buildDeps();
+// Registers every tool group on `server`, in the order `main()` starts them
+// in. Extracted so a test can exercise the full composition (all 14 tools
+// actually registered together) rather than only each register*Tools
+// function in isolation — see test/smoke.test.ts.
+export function registerAllTools(
+  server: McpServer,
+  deps: ToolDeps & { rateLimiter: SlidingWindowRateLimiter }
+): void {
   registerDiscoveryTools(server, deps);
   registerMessagingTools(server, deps);
   registerReadingTools(server, deps);
   registerSearchTools(server, deps);
   registerCanvasTools(server, deps);
   registerAutoReplyTools(server, deps);
+}
+
+async function main() {
+  const server = createServer();
+  const deps = buildDeps();
+  registerAllTools(server, deps);
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

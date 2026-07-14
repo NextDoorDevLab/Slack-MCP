@@ -21,6 +21,10 @@ function json(data: unknown) {
 const HISTORY_PAGE_SIZE = 50;
 const MAX_HISTORY_PAGES_PER_POLL = 5;
 
+// Slack `ts` values are fixed-width strings (10-digit seconds + "." +
+// 6-digit microseconds, until year 2286), so lexical string comparison
+// sorts them identically to numeric comparison while avoiding parseFloat's
+// precision loss past ~16 significant digits.
 function tsExtreme(
   messages: { ts?: string }[],
   pick: "max" | "min"
@@ -32,8 +36,10 @@ function tsExtreme(
       result = m.ts;
       continue;
     }
-    const cmp = parseFloat(m.ts) - parseFloat(result);
-    if ((pick === "max" && cmp > 0) || (pick === "min" && cmp < 0)) {
+    if (
+      (pick === "max" && m.ts > result) ||
+      (pick === "min" && m.ts < result)
+    ) {
       result = m.ts;
     }
   }
@@ -184,7 +190,7 @@ export function registerReadingTools(server: McpServer, deps: ToolDeps): void {
         }
 
         for (const m of fetched) {
-          if (!since || parseFloat(m.ts!) > parseFloat(since)) {
+          if (!since || m.ts! > since) {
             newMessages.push({
               channel: channelId,
               ts: m.ts!,
@@ -215,7 +221,7 @@ export function registerReadingTools(server: McpServer, deps: ToolDeps): void {
       }
 
       saveCursor(deps.configDir, ws, cursor);
-      newMessages.sort((a, b) => parseFloat(a.ts) - parseFloat(b.ts));
+      newMessages.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
 
       const rules = loadRules(deps.configDir, ws);
       const annotated = newMessages.map((m) => {

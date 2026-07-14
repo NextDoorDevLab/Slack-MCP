@@ -222,7 +222,16 @@ describe("get_new_messages", () => {
 
   it("caps per-channel history at 5 pages and advances the cursor only to the oldest fetched ts (capped case)", async () => {
     const history = vi.fn();
-    const tsByPage = ["600.0", "500.0", "400.0", "300.0", "200.0"];
+    // Fixed-width, 10-integer-digit values matching real Slack `ts` shape —
+    // unlike short ad-hoc numbers (e.g. "50.0" vs "600.0"), these compare
+    // identically whether treated as strings or floats.
+    const tsByPage = [
+      "1700000600.000000",
+      "1700000500.000000",
+      "1700000400.000000",
+      "1700000300.000000",
+      "1700000200.000000",
+    ];
     tsByPage.forEach((ts, i) => {
       const isLastPage = i === tsByPage.length - 1;
       history.mockResolvedValueOnce({
@@ -243,7 +252,7 @@ describe("get_new_messages", () => {
       },
     };
     const configDir = mkdtempSync(join(tmpdir(), "slack-mcp-newmsg-"));
-    saveCursor(configDir, "playfield", { C01: "50.0" });
+    saveCursor(configDir, "playfield", { C01: "1700000000.000000" });
     const workspaces = { playfield: { tokenEnv: "NM3" } };
     process.env.NM3 = "xoxp-fake";
     const deps: ToolDeps = {
@@ -271,13 +280,22 @@ describe("get_new_messages", () => {
     expect(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       parsed.messages.map((m: any) => m.ts)
-    ).toEqual(["200.0", "300.0", "400.0", "500.0", "600.0"]);
+    ).toEqual([
+      "1700000200.000000",
+      "1700000300.000000",
+      "1700000400.000000",
+      "1700000500.000000",
+      "1700000600.000000",
+    ]);
 
     // Capped: the cursor must advance only to the OLDEST ts actually fetched
-    // this poll (200.0), NOT the newest (600.0). Advancing to the newest
-    // here would permanently skip the still-unfetched backlog beyond page 5
-    // on every future poll, since it would now fall before the cursor.
-    expect(loadCursor(configDir, "playfield")).toEqual({ C01: "200.0" });
+    // this poll (1700000200.000000), NOT the newest (1700000600.000000).
+    // Advancing to the newest here would permanently skip the
+    // still-unfetched backlog beyond page 5 on every future poll, since it
+    // would now fall before the cursor.
+    expect(loadCursor(configDir, "playfield")).toEqual({
+      C01: "1700000200.000000",
+    });
 
     rmSync(configDir, { recursive: true, force: true });
   });

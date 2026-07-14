@@ -11,10 +11,12 @@ import { join } from "node:path";
 import type { ToolDeps } from "../../src/tools/discovery.js";
 
 // NOTE: `to: "U01"` is not a channel-ID shape (see CHANNEL_ID_RE in
-// src/tools/messaging.ts), so sendMessageCore resolves it as a name via the
-// cache rather than posting directly. The brief's fakeClient has no
-// `users.list`, so (as in test/tools/messaging.test.ts) the cache is
-// pre-seeded here to satisfy that resolution without a real API call.
+// src/tools/messaging.ts), so resolveSendTarget/sendToResolvedTarget (which
+// auto_reply calls in place of the old combined sendMessageCore) resolve it
+// as a name via the cache rather than posting directly. The brief's
+// fakeClient has no `users.list`, so (as in test/tools/messaging.test.ts)
+// the cache is pre-seeded here to satisfy that resolution without a real
+// API call.
 function setup(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   fakeClient: any,
@@ -208,6 +210,46 @@ describe("auto_reply", () => {
 
     expect(JSON.parse(second.content[0].text)).toEqual({ sent: true });
     expect(fakeClient.chat.postMessage).toHaveBeenCalledTimes(1);
+    expect(readAuditLog(deps.configDir)).toHaveLength(1);
+
+    rmSync(deps.configDir, { recursive: true, force: true });
+  });
+
+  it("sends directly to a channel-ID-shaped `to`, with no ambiguity and no resolution API calls", async () => {
+    // "C0123456789" matches CHANNEL_ID_RE (src/tools/messaging.ts), so
+    // resolveSendTarget resolves it immediately without touching
+    // users.list/conversations.open — there's nothing to disambiguate and
+    // no name-resolution API call is needed.
+    const fakeClient = {
+      conversations: {
+        open: vi.fn(),
+      },
+      chat: {
+        postMessage: vi.fn().mockResolvedValue({ ts: "1", channel: "D01" }),
+      },
+    };
+    const deps = setup(fakeClient, 5);
+    const consumeSpy = vi.spyOn(deps.rateLimiter, "tryConsume");
+    const server = new McpServer({ name: "test", version: "0.0.0" });
+    registerAutoReplyTools(server, deps);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tool = (server as any)._registeredTools["auto_reply"];
+
+    const result = await tool.handler(
+      {
+        to: "C0123456789",
+        text: "On it",
+        matchedRule: "bug ack",
+        workspace: "playfield",
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any
+    );
+
+    expect(JSON.parse(result.content[0].text)).toEqual({ sent: true });
+    expect(consumeSpy).toHaveBeenCalledTimes(1);
+    expect(fakeClient.chat.postMessage).toHaveBeenCalledTimes(1);
+    expect(fakeClient.conversations.open).not.toHaveBeenCalled();
     expect(readAuditLog(deps.configDir)).toHaveLength(1);
 
     rmSync(deps.configDir, { recursive: true, force: true });

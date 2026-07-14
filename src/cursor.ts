@@ -31,7 +31,11 @@ export function advanceCursor(
   ts: string
 ): void {
   const current = state[conversationId];
-  if (!current || parseFloat(ts) > parseFloat(current)) {
+  // Slack `ts` values are fixed-width strings (10-digit seconds + "." +
+  // 6-digit microseconds, until year 2286), so a plain string comparison
+  // sorts them identically to numeric comparison while avoiding parseFloat's
+  // precision loss past ~16 significant digits.
+  if (!current || ts > current) {
     state[conversationId] = ts;
   }
 }

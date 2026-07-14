@@ -79,7 +79,7 @@ describe("upload-policy", () => {
 
   it("supports deny-all-then-negate for a strict allowlist-style policy", () => {
     ensureDenylistFile(dir);
-    const allowedRoot = join(homedir(), "projects", "matchable");
+    const allowedRoot = join(homedir(), "projects", "client-a");
     writeFileSync(getDenylistPath(dir), `*\n!${allowedRoot}/**\n`);
 
     expect(isUploadAllowed(dir, join(allowedRoot, "report.pdf")).allowed).toBe(

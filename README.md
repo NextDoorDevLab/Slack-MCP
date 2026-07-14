@@ -204,7 +204,9 @@ npm test
 
 Every push and pull request against `master` runs the GitHub Actions
 pipeline in `.github/workflows/ci.yml`: build, lint, format check, and the
-test suite. All four must pass before a PR can be merged.
+test suite. CI runs these checks on every push and PR, but merging isn't
+blocked on them by default — maintainers should enable a branch protection
+rule on `master` requiring this workflow to pass if that's wanted.
 
 ## License
 

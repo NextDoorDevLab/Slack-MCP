@@ -1,5 +1,11 @@
 # slack_mcp — Design Spec
 
+> **Historical design doc.** Where this conflicts with the implementation
+> plan (`docs/superpowers/plans/2026-07-14-slack-mcp.md`) or the shipped
+> code, the code and plan are authoritative — this doc has not been updated
+> for every mid-implementation correction (e.g. the GitHub org name,
+> `tokenEnv` casing).
+
 Date: 2026-07-14
 Status: Approved, pending implementation
 Org: NextDoorDevLabs (to be open sourced)
@@ -53,7 +59,7 @@ slack_mcp/
 Runtime config and all secrets live outside the repo, under `~/.slack-mcp/` (git-ignored, never committed):
 
 - `workspaces.json` — `{ "playfield": { "token_env": "SLACK_TOKEN_PLAYFIELD" }, "nextdoordev": { "token_env": "SLACK_TOKEN_NEXTDOORDEV" } }`
-- `directory-map.json` — path prefix → workspace name, e.g. `{ "/home/bakhtarian/projects/matchable_project": "playfield", "/home/bakhtarian/projects/tessly": "nextdoordev" }`
+- `directory-map.json` — path prefix → workspace name, e.g. `{ "/home/you/projects/client-a": "playfield", "/home/you/projects/client-b": "nextdoordev" }`
 - `config.json` — misc settings, including `auto_reply_rate_limit_per_minute` (default `5`; `0`/`null` disables the cap)
 - `cache/<workspace>.json` — resolved name→ID maps: `{ users: {}, channels: {}, dms: {}, updated_at }`
 - `cursors/<workspace>.json` — last-seen timestamp per conversation, used by `get_new_messages`
@@ -130,7 +136,7 @@ Example `policy.md`:
 ```markdown
 ## Auto-approved
 - Simple acknowledgements ("got it", "thanks", "will do") to direct pings
-- "On it" replies to bug reports assigned to me in #matchable-bugs
+- "On it" replies to bug reports assigned to me in #eng-bugs
 
 ## Never auto-send
 - Anything involving money, deadlines, or commitments
@@ -159,7 +165,7 @@ Scopes: `chat:write`, `channels:read`, `channels:history`, `groups:read`, `group
 
 - Cache resolution logic (prefix matching, fuzzy name matching, disambiguation, stale-entry recovery) is pure functions — unit-tested with vitest.
 - Policy evaluation (`rules.json` matching, rate limiter windowing) — unit-tested with vitest.
-- Slack API interaction itself — validated manually against two real workspaces (e.g. Matchable/Playfield and NextDoorDev) before considering v1 done: send DM, send channel message, ambiguous-name resolution, stale-cache recovery, directory-based default resolution, one `/loop` polling cycle, and (if built) one Socket Mode round-trip.
+- Slack API interaction itself — validated manually against two real, separately-configured workspaces before considering v1 done: send DM, send channel message, ambiguous-name resolution, stale-cache recovery, directory-based default resolution, one `/loop` polling cycle, and (if built) one Socket Mode round-trip.
 
 ## Open source
 

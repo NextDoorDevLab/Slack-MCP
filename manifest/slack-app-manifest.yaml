@@ -13,14 +13,30 @@ oauth_config:
       - im:write
       - im:history
       - users:read
-      - users:read.email
       - search:read
       - reactions:write
       - files:read
       - files:write
-      - canvases:read
       - canvases:write
 settings:
+  event_subscriptions:
+    # This app has no bot scope/bot user (oauth_config.scopes only defines a
+    # `user:` list, matching the "send/read as yourself" design) — events are
+    # therefore subscribed under user_events, delivered under the user
+    # token's own scopes (channels:history, groups:history, im:history above
+    # cover message.channels/message.groups/message.im respectively), not
+    # bot_events. See daemon/README.md's Requirements section for a caveat
+    # about verifying this against a live workspace.
+    # message.mpim (group DM) intentionally omitted: it has no corresponding
+    # scope in oauth_config.scopes.user (no mpim:history) and no code in
+    # this repo ever lists "mpim" conversations (see the "types" params in
+    # src/tools/reading.ts and src/tools/discovery.ts, both of which only
+    # ever request public_channel/private_channel/im) — subscribing to it
+    # without the scope to back it up wouldn't deliver anything.
+    user_events:
+      - message.channels
+      - message.groups
+      - message.im
   socket_mode_enabled: true
   org_deploy_enabled: false
   token_rotation_enabled: false

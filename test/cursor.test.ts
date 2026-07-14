@@ -19,12 +19,15 @@ describe("cursor", () => {
   });
 
   it("advanceCursor only moves forward", () => {
-    const state = { C01: "100.5" };
-    advanceCursor(state, "C01", "50.0");
-    expect(state.C01).toBe("100.5");
-    advanceCursor(state, "C01", "200.0");
-    expect(state.C01).toBe("200.0");
-    advanceCursor(state, "C02", "10.0");
-    expect(state.C02).toBe("10.0");
+    // Fixed-width, 10-integer-digit values matching real Slack `ts` shape
+    // (unlike short ad-hoc numbers, these compare identically as strings
+    // and as floats).
+    const state = { C01: "1700000200.000000" };
+    advanceCursor(state, "C01", "1700000100.000000");
+    expect(state.C01).toBe("1700000200.000000");
+    advanceCursor(state, "C01", "1700000300.000000");
+    expect(state.C01).toBe("1700000300.000000");
+    advanceCursor(state, "C02", "1700000010.000000");
+    expect(state.C02).toBe("1700000010.000000");
   });
 });

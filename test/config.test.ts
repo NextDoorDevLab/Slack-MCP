@@ -15,45 +15,40 @@ import {
 
 describe("resolveWorkspaceFromCwd", () => {
   const map: DirectoryMap = {
-    "/home/bakhtarian/projects/matchable_project": "playfield",
-    "/home/bakhtarian/projects/tessly": "nextdoordev",
+    "/home/you/projects/client-a": "playfield",
+    "/home/you/projects/client-b": "nextdoordev",
   };
 
   it("matches an exact directory", () => {
-    expect(
-      resolveWorkspaceFromCwd("/home/bakhtarian/projects/tessly", map)
-    ).toBe("nextdoordev");
+    expect(resolveWorkspaceFromCwd("/home/you/projects/client-b", map)).toBe(
+      "nextdoordev"
+    );
   });
 
   it("matches a subdirectory via longest prefix", () => {
     expect(
-      resolveWorkspaceFromCwd(
-        "/home/bakhtarian/projects/matchable_project/src",
-        map
-      )
+      resolveWorkspaceFromCwd("/home/you/projects/client-a/src", map)
     ).toBe("playfield");
   });
 
   it("returns null when nothing matches", () => {
-    expect(
-      resolveWorkspaceFromCwd("/home/bakhtarian/projects/other", map)
-    ).toBeNull();
+    expect(resolveWorkspaceFromCwd("/home/you/projects/other", map)).toBeNull();
   });
 
   it("prefers the longer of two overlapping prefixes", () => {
     const overlapping: DirectoryMap = {
-      "/home/bakhtarian/projects": "default-ws",
-      "/home/bakhtarian/projects/tessly": "nextdoordev",
+      "/home/you/projects": "default-ws",
+      "/home/you/projects/client-b": "nextdoordev",
     };
     expect(
-      resolveWorkspaceFromCwd("/home/bakhtarian/projects/tessly", overlapping)
+      resolveWorkspaceFromCwd("/home/you/projects/client-b", overlapping)
     ).toBe("nextdoordev");
   });
 });
 
 describe("resolveWorkspace", () => {
   const map: DirectoryMap = {
-    "/home/bakhtarian/projects/tessly": "nextdoordev",
+    "/home/you/projects/client-b": "nextdoordev",
   };
   const workspaces: WorkspacesFile = {
     nextdoordev: { tokenEnv: "SLACK_TOKEN_NEXTDOORDEV" },
@@ -64,7 +59,7 @@ describe("resolveWorkspace", () => {
     expect(
       resolveWorkspace(
         "playfield",
-        "/home/bakhtarian/projects/tessly",
+        "/home/you/projects/client-b",
         map,
         workspaces
       )
@@ -75,7 +70,7 @@ describe("resolveWorkspace", () => {
     expect(
       resolveWorkspace(
         undefined,
-        "/home/bakhtarian/projects/tessly",
+        "/home/you/projects/client-b",
         map,
         workspaces
       )
@@ -84,12 +79,7 @@ describe("resolveWorkspace", () => {
 
   it("throws listing configured workspaces when unresolvable", () => {
     expect(() =>
-      resolveWorkspace(
-        undefined,
-        "/home/bakhtarian/projects/other",
-        map,
-        workspaces
-      )
+      resolveWorkspace(undefined, "/home/you/projects/other", map, workspaces)
     ).toThrowError(/nextdoordev, playfield/);
   });
 
@@ -97,7 +87,7 @@ describe("resolveWorkspace", () => {
     expect(() =>
       resolveWorkspace(
         "unknown-ws",
-        "/home/bakhtarian/projects/tessly",
+        "/home/you/projects/client-b",
         map,
         workspaces
       )
@@ -159,7 +149,7 @@ describe("load* functions", () => {
 
     it("parses and returns directory-map.json contents when present", () => {
       const data: DirectoryMap = {
-        "/home/bakhtarian/projects/tessly": "nextdoordev",
+        "/home/you/projects/client-b": "nextdoordev",
       };
       writeFileSync(
         join(configDir, "directory-map.json"),

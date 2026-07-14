@@ -31,6 +31,13 @@ Each workspace entry used by the daemon needs, in addition to the existing
   **Socket Mode** settings page. This is separate from the API token used for
   `chat.postMessage` etc.
 
+`manifest/slack-app-manifest.yaml` also configures an `event_subscriptions`
+block so Slack actually pushes `message` events over the socket this daemon
+listens on. That block is a best-effort starting point, not validated
+against a live workspace in this environment (no live tokens available) —
+double-check and adjust it on the app's **Event Subscriptions** settings
+page during setup if messages aren't arriving.
+
 ## Running
 
 ```bash
