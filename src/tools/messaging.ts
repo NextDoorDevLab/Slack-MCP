@@ -12,6 +12,7 @@ import {
   dropCacheEntry,
   type WorkspaceCache,
 } from "../cache.js";
+import { isUploadAllowed } from "../upload-policy.js";
 
 function json(data: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
@@ -169,6 +170,15 @@ export function registerMessagingTools(
       workspace: z.string().optional(),
     },
     async ({ channel, filePath, workspace }) => {
+      const decision = isUploadAllowed(deps.configDir, filePath);
+      if (!decision.allowed) {
+        return json({
+          ok: false,
+          reason: "denied_by_upload_policy",
+          message: decision.reason,
+        });
+      }
+
       const ws = resolveWorkspace(
         workspace,
         process.cwd(),

@@ -3,10 +3,11 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerMessagingTools } from "../../src/tools/messaging.js";
 import { WorkspaceRegistry } from "../../src/workspace.js";
 import { saveCache, loadCache } from "../../src/cache.js";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ToolDeps } from "../../src/tools/discovery.js";
+import { getDenylistPath } from "../../src/upload-policy.js";
 
 // NOTE: the installed @modelcontextprotocol/sdk version stores a registered tool's
 // invocable function under `.handler` (not `.callback` as some docs/examples assume) —
@@ -383,6 +384,64 @@ describe("send_file", () => {
       filesUploadV2: vi.fn().mockResolvedValue({ ok: true }),
     };
     const deps = setup(fakeClient);
+    const server = new McpServer({ name: "test", version: "0.0.0" });
+    registerMessagingTools(server, deps);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tool = (server as any)._registeredTools["send_file"];
+
+    const result = await tool.handler(
+      { channel: "C01", filePath: "/tmp/report.pdf", workspace: "playfield" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any
+    );
+
+    expect(fakeClient.filesUploadV2).toHaveBeenCalledWith({
+      channel_id: "C01",
+      file: "/tmp/report.pdf",
+    });
+    expect(JSON.parse(result.content[0].text)).toEqual({ ok: true });
+
+    rmSync(deps.configDir, { recursive: true, force: true });
+  });
+
+  it("denies a file matching the upload denylist and does not call filesUploadV2", async () => {
+    const fakeClient = {
+      filesUploadV2: vi.fn().mockResolvedValue({ ok: true }),
+    };
+    const deps = setup(fakeClient);
+    // A deny-everything policy, written before the tool call so it's what
+    // isUploadAllowed reads instead of the bootstrapped defaults.
+    writeFileSync(getDenylistPath(deps.configDir), "*\n");
+
+    const server = new McpServer({ name: "test", version: "0.0.0" });
+    registerMessagingTools(server, deps);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tool = (server as any)._registeredTools["send_file"];
+
+    const result = await tool.handler(
+      { channel: "C01", filePath: "/tmp/report.pdf", workspace: "playfield" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any
+    );
+
+    expect(fakeClient.filesUploadV2).not.toHaveBeenCalled();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.reason).toBe("denied_by_upload_policy");
+    expect(typeof parsed.message).toBe("string");
+
+    rmSync(deps.configDir, { recursive: true, force: true });
+  });
+
+  it("uploads a file that is allowed under a custom denylist policy", async () => {
+    const fakeClient = {
+      filesUploadV2: vi.fn().mockResolvedValue({ ok: true }),
+    };
+    const deps = setup(fakeClient);
+    // Deny-all except this one path, exercising the negation path through
+    // send_file end-to-end rather than just relying on the default policy.
+    writeFileSync(getDenylistPath(deps.configDir), "*\n!/tmp/report.pdf\n");
+
     const server = new McpServer({ name: "test", version: "0.0.0" });
     registerMessagingTools(server, deps);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
