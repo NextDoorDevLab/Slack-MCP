@@ -1,6 +1,5 @@
 // daemon/socket-listener.ts
 import { SocketModeClient } from "@slack/socket-mode";
-import { WebClient } from "@slack/web-api";
 import { getConfigDir, loadWorkspaces } from "../src/config.js";
 
 interface DaemonWorkspaceEntry {
@@ -19,12 +18,6 @@ async function startListener(name: string, entry: DaemonWorkspaceEntry) {
   }
 
   const socket = new SocketModeClient({ appToken });
-  // `web` is constructed now (and requires userToken above) so that a future,
-  // deliberate wiring of this handler to actually reply as the user doesn't
-  // need to thread the token through again — see the comment in the "message"
-  // handler below for why that wiring isn't done here.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const web = new WebClient(userToken);
 
   socket.on("message", async ({ event, ack }) => {
     await ack();
@@ -67,7 +60,16 @@ async function main() {
   console.warn(
     `[slack-mcp-daemon] Starting listeners for: ${names.join(", ")}`
   );
-  await Promise.all(names.map((name) => startListener(name, workspaces[name])));
+  // Each workspace's startup is isolated: a rejection (bad app token, transient
+  // network issue, etc.) for one workspace is caught and logged here rather than
+  // propagating, so it can't tear down other workspaces' already-live connections.
+  await Promise.all(
+    names.map((name) =>
+      startListener(name, workspaces[name]).catch((error: unknown) => {
+        console.error(`[slack-mcp-daemon] [${name}] Failed to start: ${error}`);
+      })
+    )
+  );
 }
 
 main().catch((err) => {
