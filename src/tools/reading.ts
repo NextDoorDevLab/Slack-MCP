@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { resolveWorkspace } from "../config.js";
 import type { ToolDeps } from "./discovery.js";
+import { paginateSlack } from "../slack-pagination.js";
 
 function json(data: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
@@ -55,14 +56,22 @@ export function registerReadingTools(server: McpServer, deps: ToolDeps): void {
         deps.workspaces
       );
       const { client } = deps.registry.get(ws);
-      const res = await client.conversations.replies({ channel, ts: threadTs });
-      return json(
-        (res.messages ?? []).map((m) => ({
-          ts: m.ts,
-          user: m.user,
-          text: m.text,
-        }))
-      );
+      const messages = await paginateSlack(async (cursor) => {
+        const res = await client.conversations.replies({
+          channel,
+          ts: threadTs,
+          cursor,
+        });
+        return {
+          items: (res.messages ?? []).map((m) => ({
+            ts: m.ts,
+            user: m.user,
+            text: m.text,
+          })),
+          nextCursor: res.response_metadata?.next_cursor || undefined,
+        };
+      });
+      return json(messages);
     }
   );
 }

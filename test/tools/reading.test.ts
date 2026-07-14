@@ -57,7 +57,62 @@ describe("reading tools", () => {
     expect(fakeClient.conversations.replies).toHaveBeenCalledWith({
       channel: "C01",
       ts: "1",
+      cursor: undefined,
     });
     expect(JSON.parse(threadResult.content[0].text)).toHaveLength(2);
+  });
+
+  it("paginates read_thread across multiple pages via response_metadata.next_cursor", async () => {
+    const fakeClient = {
+      conversations: {
+        history: vi.fn(),
+        replies: vi
+          .fn()
+          .mockResolvedValueOnce({
+            messages: [{ ts: "1", user: "U01", text: "hi" }],
+            response_metadata: { next_cursor: "cursor-1" },
+          })
+          .mockResolvedValueOnce({
+            messages: [{ ts: "2", user: "U02", text: "hey" }],
+            response_metadata: { next_cursor: "" },
+          }),
+      },
+    };
+    const workspaces = { playfield: { tokenEnv: "Z" } };
+    process.env.Z = "xoxp-fake";
+    const deps: ToolDeps = {
+      configDir: "/tmp/unused",
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      registry: new WorkspaceRegistry(workspaces, () => fakeClient as any),
+      directoryMap: {},
+      workspaces,
+    };
+
+    const server = new McpServer({ name: "test", version: "0.0.0" });
+    registerReadingTools(server, deps);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const thread = (server as any)._registeredTools["read_thread"];
+    const threadResult = await thread.handler(
+      { channel: "C01", threadTs: "1", workspace: "playfield" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any
+    );
+
+    expect(fakeClient.conversations.replies).toHaveBeenCalledTimes(2);
+    expect(fakeClient.conversations.replies).toHaveBeenNthCalledWith(1, {
+      channel: "C01",
+      ts: "1",
+      cursor: undefined,
+    });
+    expect(fakeClient.conversations.replies).toHaveBeenNthCalledWith(2, {
+      channel: "C01",
+      ts: "1",
+      cursor: "cursor-1",
+    });
+    expect(JSON.parse(threadResult.content[0].text)).toEqual([
+      { ts: "1", user: "U01", text: "hi" },
+      { ts: "2", user: "U02", text: "hey" },
+    ]);
   });
 });
