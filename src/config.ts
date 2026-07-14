@@ -21,7 +21,13 @@ export function getConfigDir(): string {
 
 function readJsonIfExists<T>(path: string, fallback: T): T {
   if (!existsSync(path)) return fallback;
-  return JSON.parse(readFileSync(path, "utf-8")) as T;
+  const raw = readFileSync(path, "utf-8");
+  try {
+    return JSON.parse(raw) as T;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Malformed JSON in ${path}: ${message}`);
+  }
 }
 
 export function loadWorkspaces(configDir: string): WorkspacesFile {
