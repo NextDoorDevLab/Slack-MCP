@@ -1,21 +1,54 @@
 # slack_mcp
 
-A generic MCP server for sending and reading Slack messages **as yourself**,
-across one or more workspaces, from Claude Code or any MCP client.
+[![CI](https://github.com/NextDoorDevLab/slack_mcp/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/NextDoorDevLab/slack_mcp/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js 20+](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](package.json)
 
-- No bot label, no "sent via Claude" footer — messages post with your own
-  Slack identity via a per-workspace user token.
-- Multi-workspace: configure as many workspaces as you're a member of.
-- Directory-aware: the workspace to use by default is picked from which
-  project directory you launched Claude Code from, so freelancers working
-  across multiple client workspaces don't have to specify one every time.
-- Local ID cache: people/channel/DM lookups are cached to disk after the
-  first resolution, so sending a second message to the same person doesn't
-  re-search.
-- Optional auto-reply workflow, rate-limited and audit-logged.
-- A local, `.gitignore`-style denylist gates which files `send_file` is
-  allowed to upload, to reduce the blast radius of a prompt-injection
-  attempt to exfiltrate a local secret (see [Upload denylist](#upload-denylist-upload-denylist) below).
+A generic [MCP](https://modelcontextprotocol.io) server for sending and
+reading Slack messages **as yourself**, across one or more workspaces, from
+Claude Code or any MCP client.
+
+## Why
+
+If you work across several Slack workspaces from different project
+directories — freelancing, contracting, consulting across clients — you
+don't want to tell your agent which workspace to use on every message, and
+you don't want your messages showing up with a bot label and a "sent via
+Claude" footer. `slack_mcp` sends through your own Slack user token, so
+messages look exactly like you typed them, and it picks the right workspace
+automatically based on which project directory you're working in.
+
+It's a **single-operator tool**: your own tokens, your own local cache, no
+hosted OAuth flow, no shared deployment. You run it, you configure it, it's
+yours.
+
+- **No bot label** — messages post with your own Slack identity via a
+  per-workspace user token (`xoxp-...`), not a bot token.
+- **Multi-workspace** — configure as many workspaces as you're a member of.
+- **Directory-aware** — the default workspace is picked from which project
+  directory you launched Claude Code from; every tool also accepts an
+  explicit `workspace` argument to override it.
+- **Local ID cache** — people/channel/DM name→ID lookups are cached to disk
+  after the first resolution, so sending a second message to the same
+  person doesn't re-search Slack.
+- **Optional auto-reply workflow** — rate-limited, audit-logged, with both a
+  deterministic rules path and a model-judged policy path.
+- **Upload denylist** — a local, `.gitignore`-style file gates which local
+  files `send_file` is allowed to upload, to reduce the blast radius of a
+  prompt-injection attempt to exfiltrate a local secret (see
+  [Upload denylist](#upload-denylist-upload-denylist) below).
+
+## How it works
+
+A single Node.js/TypeScript stdio MCP server talks directly to Slack's Web
+API (`@slack/web-api`) — no bridge process, no daemon required for the
+core tool set. All state — which env var holds each workspace's token,
+the directory→workspace map, cached IDs, poll cursors, the auto-reply
+policy, and the audit log — lives under `~/.slack-mcp/`, entirely outside
+this repo and never committed anywhere. An optional, separate Socket Mode
+daemon process can hold a real-time WebSocket connection open per
+workspace instead of relying on polling; it's off by default and reuses
+the same config.
 
 ## Two ways to get new messages — pick one before you start
 
@@ -89,7 +122,9 @@ across one or more workspaces, from Claude Code or any MCP client.
    ```
 
    Every tool also accepts an explicit `workspace` argument, which overrides
-   this default.
+   this default. If cwd matches nothing and no explicit `workspace` is
+   given, a tool call returns a clear error listing your configured
+   workspace names instead of guessing.
 
 5. **Register the MCP server with Claude Code**
 
@@ -111,15 +146,29 @@ across one or more workspaces, from Claude Code or any MCP client.
 
 ## Tools
 
-`send_message`, `send_file`, `add_reaction`, `list_channels`, `list_users`,
-`resolve`, `read_channel_history`, `read_thread`, `search_messages`,
-`get_new_messages`, `create_canvas`, `read_canvas`, `update_canvas`,
-`auto_reply`.
+| Tool                   | What it does                                                                                   |
+| ---------------------- | ---------------------------------------------------------------------------------------------- |
+| `send_message`         | Send a message as yourself — to a person by name (cache-resolved) or a channel/DM ID           |
+| `send_file`            | Upload and send a local file, gated by the [upload denylist](#upload-denylist-upload-denylist) |
+| `add_reaction`         | Add an emoji reaction to a message                                                             |
+| `list_channels`        | List channels in a workspace (paginated, warms the ID cache)                                   |
+| `list_users`           | List users in a workspace (paginated, warms the ID cache)                                      |
+| `resolve`              | Explicit cache-first name→ID lookup, useful for disambiguating a name                          |
+| `read_channel_history` | Read the last N messages from a channel                                                        |
+| `read_thread`          | Read all replies in a thread (paginated)                                                       |
+| `search_messages`      | Search messages across a workspace                                                             |
+| `get_new_messages`     | Cursor-based poll for new messages since the last check — the `/loop` entry point              |
+| `create_canvas`        | Create a new Slack canvas                                                                      |
+| `read_canvas`          | Read a canvas's markdown content                                                               |
+| `update_canvas`        | Replace a canvas's content                                                                     |
+| `auto_reply`           | Send a rate-limited, audit-logged autonomous reply per the auto-reply policy                   |
 
 ## Configuration files (`~/.slack-mcp/`)
 
 All of these are created under the directory pointed at by
-`SLACK_MCP_CONFIG_DIR` if set, or `~/.slack-mcp/` by default.
+`SLACK_MCP_CONFIG_DIR` if set, or `~/.slack-mcp/` by default. Nothing here
+is ever read from or written to this repo — it's all yours, on your own
+machine.
 
 | File                       | Purpose                                                                                                                            |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
@@ -177,6 +226,11 @@ like:
 and handle each per the auto-reply policy in ~/.slack-mcp/policy.md"
 ```
 
+`get_new_messages` tracks a per-channel cursor, so repeated calls only
+return messages you haven't seen — and if a channel has more unseen
+messages than fit in one poll, it advances the cursor conservatively so the
+backlog is picked up on the next poll rather than silently skipped.
+
 **Advanced: real-time via Socket Mode.** See [`daemon/README.md`](daemon/README.md).
 **Read the warning there before enabling** — an unattended busy channel
 wired to trigger an agent per message can burn through model quota quickly.
@@ -186,15 +240,86 @@ for sending.
 
 ## Auto-reply policy
 
-Define what's safe to send without review in `~/.slack-mcp/policy.md`
-(judged case-by-case) and/or `~/.slack-mcp/rules.json` (deterministic,
-checked first). See the design spec at
-`docs/superpowers/specs/2026-07-14-slack-mcp-design.md` for the full format
-and examples.
+Two paths are checked, in this order, whenever `get_new_messages` annotates
+an incoming message and you (or an unattended `/loop`) decide whether to
+call `auto_reply`:
+
+1. **`~/.slack-mcp/rules.json`** — deterministic, structured rules. If a
+   message matches, the reply is fixed and predictable; no model judgment
+   involved. Best for repetitive, mechanical cases.
+
+   ```json
+   [
+     {
+       "name": "bug ack",
+       "channel": "C0123456789",
+       "pattern": "bug",
+       "template": "On it, will review today"
+     },
+     {
+       "name": "simple acknowledgement",
+       "pattern": "^(thanks|thank you)!?$",
+       "template": "You're welcome!"
+     }
+   ]
+   ```
+
+   `channel` is optional (omit it to match any channel); `pattern` is a
+   case-insensitive regular expression tested against the message text.
+
+2. **`~/.slack-mcp/policy.md`** — plain-language categories and examples,
+   for everything a rule didn't already match. The model judges the
+   incoming message against this doc; only a clear, confident match should
+   auto-send. Anything ambiguous should get a drafted suggested reply and
+   wait for your explicit approval instead of guessing.
+
+   ```markdown
+   ## Auto-approved
+
+   - Simple acknowledgements ("got it", "thanks", "will do") to direct pings
+   - "On it" replies to bug reports assigned to me in #team-bugs
+
+   ## Never auto-send
+
+   - Anything involving money, deadlines, or commitments
+   - First message in a new DM thread
+   ```
 
 Autonomous sends are capped at `autoReplyRateLimitPerMinute` (default 5)
-per workspace, configurable in `~/.slack-mcp/config.json`, and every one is
-logged to `~/.slack-mcp/auto-reply-log.jsonl`.
+per workspace, configurable in `~/.slack-mcp/config.json` (`0` or `null`
+disables the cap), and every one is logged to
+`~/.slack-mcp/auto-reply-log.jsonl` — this is the only record of what went
+out under your name without a review step, so treat it as load-bearing, not
+optional. A rate-limited or unresolvable (ambiguous/not-found) `auto_reply`
+call never sends and never gets logged.
+
+## Security considerations
+
+This tool intentionally has real reach — it can read your Slack history and
+send messages as you. Worth knowing before you point an unattended agent at
+it:
+
+- **`send_file` reads arbitrary local files.** The [upload denylist](#upload-denylist-upload-denylist)
+  above is the main mitigation; review and tighten it if you run `/loop` or
+  `auto_reply` unattended against channels with untrusted participants.
+- **The local ID cache and config files are the source of truth for who a
+  name resolves to.** They live under `~/.slack-mcp/` with owner-only
+  (`0600`/`0700`) file permissions, but if another process or user on your
+  machine can write there, they can redirect where "send a message to
+  Alice" actually goes. Treat `~/.slack-mcp/` with the same care as an SSH
+  key directory.
+- **Tokens are read from environment variables you control**, never
+  hardcoded or committed — `workspaces.json` only stores the _name_ of the
+  env var, not the token itself.
+- **Auto-reply is opt-in and layered**: no `policy.md`/`rules.json` means no
+  autonomous sends at all; the rate limiter and audit log are both always
+  active once you do configure it.
+- **The Socket Mode daemon is opt-in and separately warned about** — see
+  [`daemon/README.md`](daemon/README.md) for the token-burn risk of wiring
+  real-time events to an agent invocation.
+
+If you find a security issue, please open an issue on this repo rather than
+a public discussion thread.
 
 ## Testing and CI
 
@@ -207,6 +332,13 @@ pipeline in `.github/workflows/ci.yml`: build, lint, format check, and the
 test suite. CI runs these checks on every push and PR, but merging isn't
 blocked on them by default — maintainers should enable a branch protection
 rule on `master` requiring this workflow to pass if that's wanted.
+
+## Contributing
+
+Issues and pull requests are welcome. Before opening a PR: run `npm test`,
+`npm run lint`, and `npm run format:check` locally — the same checks CI
+runs. Keep changes focused and add tests for new behavior; this codebase
+favors small, well-tested modules over large ones.
 
 ## License
 
