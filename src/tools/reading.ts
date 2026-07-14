@@ -9,6 +9,36 @@ function json(data: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
 }
 
+// Per-channel history fetch inside get_new_messages is bounded (not fully
+// paginated like list_channels/read_thread): a cold-start or long-gap poll
+// on a busy channel could otherwise pull down months of history in one call,
+// which is a latency and rate-limit risk. HISTORY_PAGE_SIZE and
+// MAX_HISTORY_PAGES_PER_POLL together cap each channel to at most ~200
+// messages per poll; anything older is picked up on a subsequent poll (see
+// the "capped" cursor-advancement logic below, which advances the cursor
+// only to the oldest ts actually fetched so nothing is skipped).
+const HISTORY_PAGE_SIZE = 50;
+const MAX_HISTORY_PAGES_PER_POLL = 5;
+
+function tsExtreme(
+  messages: { ts?: string }[],
+  pick: "max" | "min"
+): string | undefined {
+  let result: string | undefined;
+  for (const m of messages) {
+    if (!m.ts) continue;
+    if (result === undefined) {
+      result = m.ts;
+      continue;
+    }
+    const cmp = parseFloat(m.ts) - parseFloat(result);
+    if ((pick === "max" && cmp > 0) || (pick === "min" && cmp < 0)) {
+      result = m.ts;
+    }
+  }
+  return result;
+}
+
 export function registerReadingTools(server: McpServer, deps: ToolDeps): void {
   server.tool(
     "read_channel_history",
@@ -90,12 +120,18 @@ export function registerReadingTools(server: McpServer, deps: ToolDeps): void {
       const { client } = deps.registry.get(ws);
       const cursor = loadCursor(deps.configDir, ws);
 
-      const channelsRes = await client.conversations.list({
-        types: "public_channel,private_channel,im",
+      const channels = await paginateSlack(async (pageCursor) => {
+        const res = await client.conversations.list({
+          types: "public_channel,private_channel,im",
+          cursor: pageCursor,
+        });
+        return {
+          items: (res.channels ?? [])
+            .filter((c) => c.is_member !== false)
+            .map((c) => ({ id: c.id! })),
+          nextCursor: res.response_metadata?.next_cursor || undefined,
+        };
       });
-      const channels = (channelsRes.channels ?? []).filter(
-        (c) => c.is_member !== false
-      );
 
       const newMessages: {
         channel: string;
@@ -103,23 +139,50 @@ export function registerReadingTools(server: McpServer, deps: ToolDeps): void {
         user?: string;
         text?: string;
       }[] = [];
+      const skippedChannels: { channel: string; error: string }[] = [];
+
       for (const channel of channels) {
-        const channelId = channel.id!;
+        const channelId = channel.id;
         const since = cursor[channelId];
-        let history;
+
+        const fetched: { ts?: string; user?: string; text?: string }[] = [];
+        let pageCursor: string | undefined;
+        let pagesFetched = 0;
+        let cappedByPageLimit = false;
         try {
-          history = await client.conversations.history({
-            channel: channelId,
-            oldest: since,
-            limit: 50,
-          });
-        } catch {
+          do {
+            const res = await client.conversations.history({
+              channel: channelId,
+              oldest: since,
+              cursor: pageCursor,
+              limit: HISTORY_PAGE_SIZE,
+            });
+            fetched.push(...(res.messages ?? []));
+            pagesFetched++;
+            const nextCursor = res.response_metadata?.next_cursor || undefined;
+            if (nextCursor && pagesFetched >= MAX_HISTORY_PAGES_PER_POLL) {
+              // More history remains beyond what we're willing to fetch this
+              // poll — stop here rather than following the cursor further.
+              cappedByPageLimit = true;
+              pageCursor = undefined;
+            } else {
+              pageCursor = nextCursor;
+            }
+          } while (pageCursor);
+        } catch (err) {
           // Skip channels we can't read right now (e.g. archived, kicked,
           // transient API error) so one bad channel doesn't block the poll
-          // for every other channel or lose progress already made.
+          // for every other channel or lose progress already made. Record
+          // it so a channel that starts silently failing every poll is
+          // still observable instead of just quietly vanishing from results.
+          skippedChannels.push({
+            channel: channelId,
+            error: err instanceof Error ? err.message : String(err),
+          });
           continue;
         }
-        for (const m of history.messages ?? []) {
+
+        for (const m of fetched) {
           if (!since || parseFloat(m.ts!) > parseFloat(since)) {
             newMessages.push({
               channel: channelId,
@@ -128,13 +191,31 @@ export function registerReadingTools(server: McpServer, deps: ToolDeps): void {
               text: m.text,
             });
           }
-          advanceCursor(cursor, channelId, m.ts!);
+        }
+
+        // conversations.history returns messages newest-first (and pages
+        // continue further back in time), so `fetched` spans newest -> oldest
+        // across every page we pulled this poll.
+        //
+        // - Exhausted (drained all pages back to `since`, i.e. no next_cursor
+        //   left): safe to advance the cursor to the newest ts seen, exactly
+        //   like a single unpaginated fetch would.
+        // - Capped (stopped early because MAX_HISTORY_PAGES_PER_POLL was hit
+        //   while Slack still had more pages): advancing to the newest ts
+        //   would permanently skip the older, not-yet-fetched backlog on all
+        //   future polls (they'd now fall before the cursor). Instead advance
+        //   only to the OLDEST ts actually fetched this poll, so the next
+        //   poll resumes exactly where this one left off.
+        if (fetched.length > 0) {
+          const exhausted = !cappedByPageLimit;
+          const targetTs = tsExtreme(fetched, exhausted ? "max" : "min");
+          if (targetTs) advanceCursor(cursor, channelId, targetTs);
         }
       }
 
       saveCursor(deps.configDir, ws, cursor);
       newMessages.sort((a, b) => parseFloat(a.ts) - parseFloat(b.ts));
-      return json({ messages: newMessages });
+      return json({ messages: newMessages, skippedChannels });
     }
   );
 }

@@ -166,4 +166,225 @@ describe("get_new_messages", () => {
 
     rmSync(configDir, { recursive: true, force: true });
   });
+
+  it("follows multiple history pages within the cap and advances the cursor to the newest ts (exhausted case)", async () => {
+    const fakeClient = {
+      conversations: {
+        list: vi.fn().mockResolvedValue({
+          channels: [{ id: "C01", name: "general", is_member: true }],
+        }),
+        history: vi
+          .fn()
+          .mockResolvedValueOnce({
+            messages: [{ ts: "150.0", user: "U01", text: "page1" }],
+            response_metadata: { next_cursor: "page-2" },
+          })
+          .mockResolvedValueOnce({
+            messages: [{ ts: "120.0", user: "U02", text: "page2" }],
+            response_metadata: { next_cursor: "" },
+          }),
+      },
+    };
+    const configDir = mkdtempSync(join(tmpdir(), "slack-mcp-newmsg-"));
+    saveCursor(configDir, "playfield", { C01: "100.0" });
+    const workspaces = { playfield: { tokenEnv: "NM2" } };
+    process.env.NM2 = "xoxp-fake";
+    const deps: ToolDeps = {
+      configDir,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      registry: new WorkspaceRegistry(workspaces, () => fakeClient as any),
+      directoryMap: {},
+      workspaces,
+    };
+
+    const server = new McpServer({ name: "test", version: "0.0.0" });
+    registerReadingTools(server, deps);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tool = (server as any)._registeredTools["get_new_messages"];
+    const result = await tool.handler(
+      { workspace: "playfield" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any
+    );
+
+    expect(fakeClient.conversations.history).toHaveBeenCalledTimes(2);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.messages).toEqual([
+      { channel: "C01", ts: "120.0", user: "U02", text: "page2" },
+      { channel: "C01", ts: "150.0", user: "U01", text: "page1" },
+    ]);
+    // Fully drained (no next_cursor left) -> cursor advances to the newest ts.
+    expect(loadCursor(configDir, "playfield")).toEqual({ C01: "150.0" });
+
+    rmSync(configDir, { recursive: true, force: true });
+  });
+
+  it("caps per-channel history at 5 pages and advances the cursor only to the oldest fetched ts (capped case)", async () => {
+    const history = vi.fn();
+    const tsByPage = ["600.0", "500.0", "400.0", "300.0", "200.0"];
+    tsByPage.forEach((ts, i) => {
+      const isLastPage = i === tsByPage.length - 1;
+      history.mockResolvedValueOnce({
+        messages: [{ ts, user: `U0${i}`, text: `page${i + 1}` }],
+        // Even the last page we're willing to fetch still reports more
+        // history available beyond it — that's what makes this "capped".
+        response_metadata: {
+          next_cursor: isLastPage ? "page-6" : `page-${i + 2}`,
+        },
+      });
+    });
+    const fakeClient = {
+      conversations: {
+        list: vi.fn().mockResolvedValue({
+          channels: [{ id: "C01", name: "general", is_member: true }],
+        }),
+        history,
+      },
+    };
+    const configDir = mkdtempSync(join(tmpdir(), "slack-mcp-newmsg-"));
+    saveCursor(configDir, "playfield", { C01: "50.0" });
+    const workspaces = { playfield: { tokenEnv: "NM3" } };
+    process.env.NM3 = "xoxp-fake";
+    const deps: ToolDeps = {
+      configDir,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      registry: new WorkspaceRegistry(workspaces, () => fakeClient as any),
+      directoryMap: {},
+      workspaces,
+    };
+
+    const server = new McpServer({ name: "test", version: "0.0.0" });
+    registerReadingTools(server, deps);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tool = (server as any)._registeredTools["get_new_messages"];
+    const result = await tool.handler(
+      { workspace: "playfield" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any
+    );
+
+    // The cap (5 pages) must stop the loop even though the 5th page still
+    // reported a next_cursor (more backlog exists beyond the cap).
+    expect(history).toHaveBeenCalledTimes(5);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      parsed.messages.map((m: any) => m.ts)
+    ).toEqual(["200.0", "300.0", "400.0", "500.0", "600.0"]);
+
+    // Capped: the cursor must advance only to the OLDEST ts actually fetched
+    // this poll (200.0), NOT the newest (600.0). Advancing to the newest
+    // here would permanently skip the still-unfetched backlog beyond page 5
+    // on every future poll, since it would now fall before the cursor.
+    expect(loadCursor(configDir, "playfield")).toEqual({ C01: "200.0" });
+
+    rmSync(configDir, { recursive: true, force: true });
+  });
+
+  it("paginates the channel list across multiple pages via response_metadata.next_cursor", async () => {
+    const fakeClient = {
+      conversations: {
+        list: vi
+          .fn()
+          .mockResolvedValueOnce({
+            channels: [{ id: "C01", name: "general", is_member: true }],
+            response_metadata: { next_cursor: "cursor-1" },
+          })
+          .mockResolvedValueOnce({
+            channels: [{ id: "C02", name: "random", is_member: true }],
+            response_metadata: { next_cursor: "" },
+          }),
+        history: vi.fn().mockResolvedValue({ messages: [] }),
+      },
+    };
+    const configDir = mkdtempSync(join(tmpdir(), "slack-mcp-newmsg-"));
+    const workspaces = { playfield: { tokenEnv: "NM4" } };
+    process.env.NM4 = "xoxp-fake";
+    const deps: ToolDeps = {
+      configDir,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      registry: new WorkspaceRegistry(workspaces, () => fakeClient as any),
+      directoryMap: {},
+      workspaces,
+    };
+
+    const server = new McpServer({ name: "test", version: "0.0.0" });
+    registerReadingTools(server, deps);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tool = (server as any)._registeredTools["get_new_messages"];
+    await tool.handler(
+      { workspace: "playfield" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any
+    );
+
+    expect(fakeClient.conversations.list).toHaveBeenCalledTimes(2);
+    expect(fakeClient.conversations.list).toHaveBeenNthCalledWith(1, {
+      types: "public_channel,private_channel,im",
+      cursor: undefined,
+    });
+    expect(fakeClient.conversations.list).toHaveBeenNthCalledWith(2, {
+      types: "public_channel,private_channel,im",
+      cursor: "cursor-1",
+    });
+    // Both pages' channels must have been polled for history — proving the
+    // second page of channels isn't silently dropped.
+    expect(fakeClient.conversations.history).toHaveBeenCalledWith(
+      expect.objectContaining({ channel: "C01" })
+    );
+    expect(fakeClient.conversations.history).toHaveBeenCalledWith(
+      expect.objectContaining({ channel: "C02" })
+    );
+
+    rmSync(configDir, { recursive: true, force: true });
+  });
+
+  it("records a failing channel in skippedChannels without blocking other channels", async () => {
+    const fakeClient = {
+      conversations: {
+        list: vi.fn().mockResolvedValue({
+          channels: [
+            { id: "C01", name: "broken", is_member: true },
+            { id: "C02", name: "fine", is_member: true },
+          ],
+        }),
+        history: vi
+          .fn()
+          .mockImplementation(async ({ channel }: { channel: string }) => {
+            if (channel === "C01") throw new Error("not_in_channel");
+            return { messages: [{ ts: "10.0", user: "U01", text: "hi" }] };
+          }),
+      },
+    };
+    const configDir = mkdtempSync(join(tmpdir(), "slack-mcp-newmsg-"));
+    const workspaces = { playfield: { tokenEnv: "NM5" } };
+    process.env.NM5 = "xoxp-fake";
+    const deps: ToolDeps = {
+      configDir,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      registry: new WorkspaceRegistry(workspaces, () => fakeClient as any),
+      directoryMap: {},
+      workspaces,
+    };
+
+    const server = new McpServer({ name: "test", version: "0.0.0" });
+    registerReadingTools(server, deps);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tool = (server as any)._registeredTools["get_new_messages"];
+    const result = await tool.handler(
+      { workspace: "playfield" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any
+    );
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.skippedChannels).toEqual([
+      { channel: "C01", error: "not_in_channel" },
+    ]);
+    expect(parsed.messages).toEqual([
+      { channel: "C02", ts: "10.0", user: "U01", text: "hi" },
+    ]);
+
+    rmSync(configDir, { recursive: true, force: true });
+  });
 });
