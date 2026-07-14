@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { appendAuditLog, readAuditLog } from "../src/audit-log.js";
@@ -28,6 +28,32 @@ describe("audit log", () => {
       text: "Thanks!",
       matchedRule: "simple acknowledgement",
     });
+
+    const entries = readAuditLog(dir);
+    expect(entries).toHaveLength(2);
+    expect(entries[0].to).toBe("john");
+    expect(entries[1].to).toBe("sara");
+  });
+
+  it("skips a malformed line and still returns the valid entries in order", () => {
+    const validLine1 = JSON.stringify({
+      ts: "2026-07-14T10:00:00.000Z",
+      workspace: "playfield",
+      to: "john",
+      text: "On it",
+      matchedRule: "bug report ack",
+    });
+    const validLine2 = JSON.stringify({
+      ts: "2026-07-14T10:05:00.000Z",
+      workspace: "playfield",
+      to: "sara",
+      text: "Thanks!",
+      matchedRule: "simple acknowledgement",
+    });
+    writeFileSync(
+      join(dir, "auto-reply-log.jsonl"),
+      [validLine1, "{ not valid json", validLine2].join("\n") + "\n"
+    );
 
     const entries = readAuditLog(dir);
     expect(entries).toHaveLength(2);

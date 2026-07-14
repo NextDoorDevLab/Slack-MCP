@@ -26,8 +26,20 @@ export function appendAuditLog(
 export function readAuditLog(configDir: string): AutoReplyLogEntry[] {
   const path = logPath(configDir);
   if (!existsSync(path)) return [];
-  return readFileSync(path, "utf-8")
+  const lines = readFileSync(path, "utf-8")
     .split("\n")
-    .filter((line) => line.trim().length > 0)
-    .map((line) => JSON.parse(line) as AutoReplyLogEntry);
+    .filter((line) => line.trim().length > 0);
+
+  const entries: AutoReplyLogEntry[] = [];
+  lines.forEach((line, index) => {
+    try {
+      entries.push(JSON.parse(line) as AutoReplyLogEntry);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      process.stderr.write(
+        `[slack-mcp] Skipping malformed audit log line ${index + 1} in ${path}: ${message}\n`
+      );
+    }
+  });
+  return entries;
 }
