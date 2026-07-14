@@ -48,21 +48,25 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-// `ignore`'s .d.ts declares `export default` (ESM shape) but the package
-// itself is plain CommonJS (`module.exports = factory`, no "type" or
-// "exports" field in its package.json). Under this project's
-// `moduleResolution: "NodeNext"`, both a plain `import ignore from "ignore"`
-// and `import ignoreNs = require("ignore")` used directly type-check
-// against the CJS module's synthesized namespace object instead of the
-// callable factory ("This expression is not callable"), even though it
-// resolves correctly at runtime under esbuild-based transpilation
-// (tsx/vitest), which is why this only surfaced via `tsc`. Importing via
-// `require(...)` and then explicitly reading `.default` off the resulting
-// namespace does resolve to the correct callable type — verified against a
-// standalone `tsc --noEmit` probe before applying it here.
-// eslint-disable-next-line @typescript-eslint/no-require-imports -- required for this package's CJS/ESM interop under NodeNext; see comment above.
-import ignoreNamespace = require("ignore");
-const ignore = ignoreNamespace.default;
+import ignoreFactory from "ignore";
+import type { Ignore, Options } from "ignore";
+
+// The `ignore` package has no `exports`/proper `types` field, so under this
+// project's `moduleResolution: "NodeNext"` + `esModuleInterop`, TypeScript
+// infers the default export's type as the whole CJS module namespace
+// instead of the callable factory it actually is at runtime — confirmed
+// directly by loading the package under plain Node ESM and checking
+// `typeof (await import("ignore")).default === "function"`. This is
+// asserted to the correct type here rather than switching the import to
+// CJS `import ... = require("ignore")` syntax: that alternative satisfies
+// `tsc` (whose NodeNext output auto-injects a `createRequire` shim for a
+// literal `require(...)` call) but breaks `tsx`/`npm run dev`, which runs
+// the same source directly under Node's native ESM loader with no such
+// shim ("require is not defined in ES module scope"). Keeping the plain
+// ESM import means the same import statement works correctly across all
+// three execution paths this project uses: `tsc`-compiled `dist/`, `tsx`
+// (dev mode), and vitest (esbuild transpilation).
+const ignore = ignoreFactory as unknown as (options?: Options) => Ignore;
 
 export interface UploadDecision {
   allowed: boolean;
