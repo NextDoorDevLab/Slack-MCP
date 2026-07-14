@@ -1,0 +1,26 @@
+display_information:
+  name: slack-mcp
+  description: Send and read Slack messages as yourself, from Claude Code.
+oauth_config:
+  scopes:
+    user:
+      - chat:write
+      - channels:read
+      - channels:history
+      - groups:read
+      - groups:history
+      - im:read
+      - im:write
+      - im:history
+      - users:read
+      - users:read.email
+      - search:read
+      - reactions:write
+      - files:read
+      - files:write
+      - canvases:read
+      - canvases:write
+settings:
+  socket_mode_enabled: true
+  org_deploy_enabled: false
+  token_rotation_enabled: false
