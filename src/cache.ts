@@ -60,8 +60,12 @@ export function saveCache(
   cache: WorkspaceCache
 ): void {
   const path = cachePath(configDir, workspace);
-  mkdirSync(join(configDir, "cache"), { recursive: true });
-  writeFileSync(path, JSON.stringify(cache, null, 2));
+  // The cache fully controls who a name resolves to for outbound messages,
+  // so it's written owner-only (0600 file, 0700 directory) rather than
+  // relying on the process umask, to avoid it being world/group-readable
+  // or -writable on a shared machine.
+  mkdirSync(join(configDir, "cache"), { recursive: true, mode: 0o700 });
+  writeFileSync(path, JSON.stringify(cache, null, 2), { mode: 0o600 });
 }
 
 export function resolveFromCache(

@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import {
+  mkdtempSync,
+  rmSync,
+  mkdirSync,
+  writeFileSync,
+  statSync,
+} from "node:fs";
+import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   loadCache,
@@ -41,6 +47,26 @@ describe("cache", () => {
     };
     saveCache(dir, "playfield", cache);
     expect(loadCache(dir, "playfield")).toEqual(cache);
+  });
+
+  it("writes the cache file and directory as owner-only (0600/0700)", () => {
+    // Windows doesn't support POSIX mode bits the same way; skip there.
+    if (platform() === "win32") return;
+
+    const cache: WorkspaceCache = {
+      users: {},
+      channels: {},
+      dms: {},
+      updatedAt: "",
+    };
+    saveCache(dir, "playfield", cache);
+
+    const filePath = join(dir, "cache", "playfield.json");
+    const fileMode = statSync(filePath).mode & 0o777;
+    const dirMode = statSync(join(dir, "cache")).mode & 0o777;
+
+    expect(fileMode).toBe(0o600);
+    expect(dirMode).toBe(0o700);
   });
 
   it("resolves a single exact match", () => {

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerMessagingTools } from "../../src/tools/messaging.js";
 import { WorkspaceRegistry } from "../../src/workspace.js";
-import { saveCache } from "../../src/cache.js";
+import { saveCache, loadCache } from "../../src/cache.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -193,6 +193,183 @@ describe("send_message", () => {
     });
     expect(JSON.parse(result.content[0].text)).toEqual({
       ts: "42",
+      channel: "D999",
+    });
+
+    rmSync(deps.configDir, { recursive: true, force: true });
+  });
+
+  it("treats a channel-ID-shaped `to` as a direct send target, skipping name resolution", async () => {
+    const fakeClient = {
+      conversations: { open: vi.fn() },
+      chat: {
+        postMessage: vi
+          .fn()
+          .mockResolvedValue({ ts: "1.1", channel: "C0123ABCD" }),
+      },
+      users: { list: vi.fn() },
+    };
+    const deps = setup(fakeClient);
+
+    const server = new McpServer({ name: "test", version: "0.0.0" });
+    registerMessagingTools(server, deps);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tool = (server as any)._registeredTools["send_message"];
+    const result = await tool.handler(
+      { to: "C0123ABCD", text: "hey", workspace: "playfield" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any
+    );
+
+    expect(fakeClient.chat.postMessage).toHaveBeenCalledWith({
+      channel: "C0123ABCD",
+      text: "hey",
+    });
+    expect(fakeClient.conversations.open).not.toHaveBeenCalled();
+    expect(fakeClient.users.list).not.toHaveBeenCalled();
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      ts: "1.1",
+      channel: "C0123ABCD",
+    });
+
+    rmSync(deps.configDir, { recursive: true, force: true });
+  });
+
+  it("treats a name-shaped `to` as a person to resolve via cache, unchanged", async () => {
+    const fakeClient = {
+      conversations: {
+        open: vi.fn().mockResolvedValue({ channel: { id: "D999" } }),
+      },
+      chat: {
+        postMessage: vi.fn().mockResolvedValue({ ts: "2.2", channel: "D999" }),
+      },
+    };
+    const deps = setup(fakeClient);
+    saveCache(deps.configDir, "playfield", {
+      users: { dave: "U0DAVE001" },
+      channels: {},
+      dms: {},
+      updatedAt: "",
+    });
+
+    const server = new McpServer({ name: "test", version: "0.0.0" });
+    registerMessagingTools(server, deps);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tool = (server as any)._registeredTools["send_message"];
+    const result = await tool.handler(
+      { to: "Dave", text: "hey", workspace: "playfield" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any
+    );
+
+    expect(fakeClient.conversations.open).toHaveBeenCalledWith({
+      users: "U0DAVE001",
+    });
+    expect(fakeClient.chat.postMessage).toHaveBeenCalledWith({
+      channel: "D999",
+      text: "hey",
+    });
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      ts: "2.2",
+      channel: "D999",
+    });
+
+    rmSync(deps.configDir, { recursive: true, force: true });
+  });
+
+  it("persists dropped/re-resolved cache state even when the retry itself throws", async () => {
+    const fakeClient = {
+      conversations: {
+        open: vi.fn().mockResolvedValue({ channel: { id: "D999" } }),
+      },
+      chat: {
+        postMessage: vi
+          .fn()
+          .mockRejectedValueOnce(
+            Object.assign(new Error("user_not_found"), {
+              data: { error: "user_not_found" },
+            })
+          )
+          .mockRejectedValueOnce(new Error("some_other_error")),
+      },
+      users: {
+        list: vi.fn().mockResolvedValue({
+          members: [{ id: "U0999NEW", name: "john", real_name: "John Smith" }],
+        }),
+      },
+    };
+    const deps = setup(fakeClient);
+    saveCache(deps.configDir, "playfield", {
+      users: { john: "U_STALE" },
+      channels: {},
+      dms: {},
+      updatedAt: "",
+    });
+
+    const server = new McpServer({ name: "test", version: "0.0.0" });
+    registerMessagingTools(server, deps);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tool = (server as any)._registeredTools["send_message"];
+
+    await expect(
+      tool.handler(
+        { to: "John", text: "hey", workspace: "playfield" },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        {} as any
+      )
+    ).rejects.toThrow("some_other_error");
+
+    const persisted = loadCache(deps.configDir, "playfield");
+    expect(persisted.users["john"]).toBe("U0999NEW");
+    expect(persisted.dms["u0999new"]).toBe("D999");
+
+    rmSync(deps.configDir, { recursive: true, force: true });
+  });
+
+  it("paginates through users.list when resolving an uncached name across multiple pages", async () => {
+    const fakeClient = {
+      conversations: {
+        open: vi.fn().mockResolvedValue({ channel: { id: "D999" } }),
+      },
+      chat: {
+        postMessage: vi.fn().mockResolvedValue({ ts: "5.5", channel: "D999" }),
+      },
+      users: {
+        list: vi
+          .fn()
+          .mockResolvedValueOnce({
+            members: [{ id: "U0PAGE1", name: "alice", real_name: "Alice A" }],
+            response_metadata: { next_cursor: "cursor-2" },
+          })
+          .mockResolvedValueOnce({
+            members: [
+              { id: "U0PAGE2", name: "zack", real_name: "Zack Page Two" },
+            ],
+            response_metadata: { next_cursor: "" },
+          }),
+      },
+    };
+    const deps = setup(fakeClient);
+
+    const server = new McpServer({ name: "test", version: "0.0.0" });
+    registerMessagingTools(server, deps);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tool = (server as any)._registeredTools["send_message"];
+    const result = await tool.handler(
+      { to: "Zack", text: "hey", workspace: "playfield" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any
+    );
+
+    expect(fakeClient.users.list).toHaveBeenCalledTimes(2);
+    expect(fakeClient.users.list).toHaveBeenNthCalledWith(2, {
+      cursor: "cursor-2",
+    });
+    expect(fakeClient.conversations.open).toHaveBeenCalledWith({
+      users: "U0PAGE2",
+    });
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      ts: "5.5",
       channel: "D999",
     });
 

@@ -3,6 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { WebClient } from "@slack/web-api";
 import { resolveWorkspace } from "../config.js";
 import type { ToolDeps } from "./discovery.js";
+import { paginateSlack } from "../slack-pagination.js";
 import {
   loadCache,
   saveCache,
@@ -22,6 +23,11 @@ const STALE_ERRORS = new Set([
   "not_in_channel",
 ]);
 
+// Slack conversation IDs: public channel (C), private channel/group (G), or
+// DM (D), followed by 8+ uppercase alphanumerics. When `to` has this shape,
+// it's treated as a direct send target instead of a person name to resolve.
+const CHANNEL_ID_RE = /^[CGD][A-Z0-9]{8,}$/;
+
 async function resolveUserId(
   client: WebClient,
   cache: WorkspaceCache,
@@ -34,8 +40,22 @@ async function resolveUserId(
   const cached = resolveFromCache(cache, "users", name);
   if (cached.status !== "not_found") return cached;
 
-  const res = await client.users.list({});
-  for (const u of res.members ?? []) {
+  const members = await paginateSlack<{
+    id?: string;
+    name?: string;
+    real_name?: string;
+  }>(async (cursor) => {
+    const res = await client.users.list({ cursor });
+    return {
+      items: (res.members ?? []).map((u) => ({
+        id: u.id,
+        name: u.name,
+        real_name: u.real_name,
+      })),
+      nextCursor: res.response_metadata?.next_cursor || undefined,
+    };
+  });
+  for (const u of members) {
     if (u.id && u.name) upsertCacheEntry(cache, "users", u.name, u.id);
     if (u.id && u.real_name)
       upsertCacheEntry(cache, "users", u.real_name, u.id);
@@ -70,6 +90,16 @@ export async function sendMessageCore(
   | { status: "ambiguous"; candidates: { name: string; id: string }[] }
   | { status: "not_found" }
 > {
+  // `to` is a Slack conversation ID shape (channel/group/DM) — post
+  // directly, no name resolution or DM-opening involved. There's no
+  // "name" to fall back to here, so a stale-cache-style error (e.g. the
+  // bot/user was removed from the channel) just propagates as-is rather
+  // than attempting the retry-by-name logic below, which doesn't apply.
+  if (CHANNEL_ID_RE.test(to)) {
+    const res = await client.chat.postMessage({ channel: to, text });
+    return { status: "sent", ts: res.ts!, channel: res.channel! };
+  }
+
   const resolved = await resolveUserId(client, cache, to);
   if (resolved.status !== "found") return resolved;
 
@@ -111,8 +141,17 @@ export function registerMessagingTools(
       const { client } = deps.registry.get(ws);
       const cache = loadCache(deps.configDir, ws);
 
-      const result = await sendMessageCore(client, cache, to, text);
-      saveCache(deps.configDir, ws, cache);
+      // sendMessageCore mutates `cache` in place (dropping/re-resolving
+      // stale entries) before it can throw on a second failed send. Save
+      // whatever state it left behind even on a throw, so that mutation
+      // isn't lost and the same stale-cache failure doesn't repeat next
+      // call — then let the error propagate.
+      let result: Awaited<ReturnType<typeof sendMessageCore>>;
+      try {
+        result = await sendMessageCore(client, cache, to, text);
+      } finally {
+        saveCache(deps.configDir, ws, cache);
+      }
 
       if (result.status === "sent") {
         return json({ ts: result.ts, channel: result.channel });
