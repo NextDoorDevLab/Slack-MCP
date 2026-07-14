@@ -17,6 +17,14 @@ function cachePath(configDir: string, workspace: string): string {
   return join(configDir, "cache", `${workspace}.json`);
 }
 
+function normalizeKeys(map: Record<string, string>): Record<string, string> {
+  const normalized: Record<string, string> = {};
+  for (const [key, value] of Object.entries(map)) {
+    normalized[key.toLowerCase().trim()] = value;
+  }
+  return normalized;
+}
+
 export function loadCache(
   configDir: string,
   workspace: string
@@ -30,7 +38,20 @@ export function loadCache(
       updatedAt: new Date(0).toISOString(),
     };
   }
-  return JSON.parse(readFileSync(path, "utf-8")) as WorkspaceCache;
+  const raw = readFileSync(path, "utf-8");
+  let parsed: WorkspaceCache;
+  try {
+    parsed = JSON.parse(raw) as WorkspaceCache;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Malformed JSON in ${path}: ${message}`);
+  }
+  return {
+    users: normalizeKeys(parsed.users),
+    channels: normalizeKeys(parsed.channels),
+    dms: normalizeKeys(parsed.dms),
+    updatedAt: parsed.updatedAt,
+  };
 }
 
 export function saveCache(

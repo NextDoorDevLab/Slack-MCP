@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -93,5 +93,42 @@ describe("cache", () => {
     expect(cache.users["john"]).toBe("U0123ABCD");
     dropCacheEntry(cache, "users", "john");
     expect(cache.users["john"]).toBeUndefined();
+  });
+
+  describe("malformed JSON handling", () => {
+    it("throws a clear error naming the file and parse failure", () => {
+      const cacheDir = join(dir, "cache");
+      mkdirSync(cacheDir, { recursive: true });
+      const path = join(cacheDir, "playfield.json");
+      writeFileSync(path, "{ not valid json");
+      expect(() => loadCache(dir, "playfield")).toThrowError(
+        new RegExp(
+          `Malformed JSON in ${path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`
+        )
+      );
+    });
+  });
+
+  describe("hand-edited mixed-case keys", () => {
+    it("normalizes mixed-case keys on load so they resolve correctly", () => {
+      const cacheDir = join(dir, "cache");
+      mkdirSync(cacheDir, { recursive: true });
+      const path = join(cacheDir, "playfield.json");
+      writeFileSync(
+        path,
+        JSON.stringify({
+          users: { "John Smith": "U0123ABCD" },
+          channels: {},
+          dms: {},
+          updatedAt: "2026-07-14T10:00:00.000Z",
+        })
+      );
+      const cache = loadCache(dir, "playfield");
+      expect(cache.users["john smith"]).toBe("U0123ABCD");
+      expect(resolveFromCache(cache, "users", "John Smith")).toEqual({
+        status: "found",
+        id: "U0123ABCD",
+      });
+    });
   });
 });
