@@ -1,7 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerReadingTools } from "../../src/tools/reading.js";
 import { WorkspaceRegistry } from "../../src/workspace.js";
+import { saveCursor, loadCursor } from "../../src/cursor.js";
 import type { ToolDeps } from "../../src/tools/discovery.js";
 
 describe("reading tools", () => {
@@ -114,5 +118,52 @@ describe("reading tools", () => {
       { ts: "1", user: "U01", text: "hi" },
       { ts: "2", user: "U02", text: "hey" },
     ]);
+  });
+});
+
+describe("get_new_messages", () => {
+  it("returns messages newer than the stored cursor and advances it", async () => {
+    const fakeClient = {
+      conversations: {
+        list: vi.fn().mockResolvedValue({
+          channels: [{ id: "C01", name: "general", is_member: true }],
+        }),
+        history: vi.fn().mockResolvedValue({
+          messages: [
+            { ts: "200.0", user: "U01", text: "new one" },
+            { ts: "100.0", user: "U02", text: "old one" },
+          ],
+        }),
+      },
+    };
+    const configDir = mkdtempSync(join(tmpdir(), "slack-mcp-newmsg-"));
+    saveCursor(configDir, "playfield", { C01: "100.0" });
+    const workspaces = { playfield: { tokenEnv: "NM" } };
+    process.env.NM = "xoxp-fake";
+    const deps: ToolDeps = {
+      configDir,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      registry: new WorkspaceRegistry(workspaces, () => fakeClient as any),
+      directoryMap: {},
+      workspaces,
+    };
+
+    const server = new McpServer({ name: "test", version: "0.0.0" });
+    registerReadingTools(server, deps);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tool = (server as any)._registeredTools["get_new_messages"];
+    const result = await tool.handler(
+      { workspace: "playfield" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any
+    );
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.messages).toEqual([
+      { channel: "C01", ts: "200.0", user: "U01", text: "new one" },
+    ]);
+    expect(loadCursor(configDir, "playfield")).toEqual({ C01: "200.0" });
+
+    rmSync(configDir, { recursive: true, force: true });
   });
 });
