@@ -130,14 +130,16 @@ describe("get_new_messages", () => {
         }),
         history: vi.fn().mockResolvedValue({
           messages: [
-            { ts: "200.0", user: "U01", text: "new one" },
-            { ts: "100.0", user: "U02", text: "old one" },
+            { ts: "1700000200.000000", user: "U01", text: "new one" },
+            { ts: "1700000100.000000", user: "U02", text: "old one" },
           ],
         }),
       },
     };
     const configDir = mkdtempSync(join(tmpdir(), "slack-mcp-newmsg-"));
-    saveCursor(configDir, "playfield", { C01: "100.0" });
+    // Canonical-shaped ts (10-digit seconds + "." + 6-digit microseconds) so
+    // loadCursor's format validation (see cursor.test.ts) doesn't drop it.
+    saveCursor(configDir, "playfield", { C01: "1700000100.000000" });
     const workspaces = { playfield: { tokenEnv: "NM" } };
     process.env.NM = "xoxp-fake";
     const deps: ToolDeps = {
@@ -160,10 +162,17 @@ describe("get_new_messages", () => {
 
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.messages).toEqual([
-      { channel: "C01", ts: "200.0", user: "U01", text: "new one" },
+      {
+        channel: "C01",
+        ts: "1700000200.000000",
+        user: "U01",
+        text: "new one",
+      },
     ]);
     expect(parsed.policyText).toBeNull();
-    expect(loadCursor(configDir, "playfield")).toEqual({ C01: "200.0" });
+    expect(loadCursor(configDir, "playfield")).toEqual({
+      C01: "1700000200.000000",
+    });
 
     rmSync(configDir, { recursive: true, force: true });
   });
@@ -177,17 +186,19 @@ describe("get_new_messages", () => {
         history: vi
           .fn()
           .mockResolvedValueOnce({
-            messages: [{ ts: "150.0", user: "U01", text: "page1" }],
+            messages: [{ ts: "1700000150.000000", user: "U01", text: "page1" }],
             response_metadata: { next_cursor: "page-2" },
           })
           .mockResolvedValueOnce({
-            messages: [{ ts: "120.0", user: "U02", text: "page2" }],
+            messages: [{ ts: "1700000120.000000", user: "U02", text: "page2" }],
             response_metadata: { next_cursor: "" },
           }),
       },
     };
     const configDir = mkdtempSync(join(tmpdir(), "slack-mcp-newmsg-"));
-    saveCursor(configDir, "playfield", { C01: "100.0" });
+    // Canonical-shaped ts (10-digit seconds + "." + 6-digit microseconds) so
+    // loadCursor's format validation (see cursor.test.ts) doesn't drop it.
+    saveCursor(configDir, "playfield", { C01: "1700000100.000000" });
     const workspaces = { playfield: { tokenEnv: "NM2" } };
     process.env.NM2 = "xoxp-fake";
     const deps: ToolDeps = {
@@ -211,11 +222,23 @@ describe("get_new_messages", () => {
     expect(fakeClient.conversations.history).toHaveBeenCalledTimes(2);
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.messages).toEqual([
-      { channel: "C01", ts: "120.0", user: "U02", text: "page2" },
-      { channel: "C01", ts: "150.0", user: "U01", text: "page1" },
+      {
+        channel: "C01",
+        ts: "1700000120.000000",
+        user: "U02",
+        text: "page2",
+      },
+      {
+        channel: "C01",
+        ts: "1700000150.000000",
+        user: "U01",
+        text: "page1",
+      },
     ]);
     // Fully drained (no next_cursor left) -> cursor advances to the newest ts.
-    expect(loadCursor(configDir, "playfield")).toEqual({ C01: "150.0" });
+    expect(loadCursor(configDir, "playfield")).toEqual({
+      C01: "1700000150.000000",
+    });
 
     rmSync(configDir, { recursive: true, force: true });
   });
