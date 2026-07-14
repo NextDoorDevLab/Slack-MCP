@@ -81,6 +81,83 @@ async function openDm(
   return channelId;
 }
 
+export type SendTargetResolution =
+  | { status: "resolved"; channelId: string; userId?: string }
+  | { status: "ambiguous"; candidates: { name: string; id: string }[] }
+  | { status: "not_found" };
+
+// Resolves `to` to a concrete Slack channel/DM ID WITHOUT sending anything —
+// no chat.postMessage call happens here. This lets callers (e.g. auto_reply)
+// separate "figure out where this would go" from "actually send it", so
+// something like a rate limiter can gate the send without being charged for
+// resolution failures (ambiguous/not_found).
+//
+// `userId` is only set when `to` was resolved via name -> user-ID lookup
+// (i.e. NOT a direct channel-ID send). Downstream send logic uses its
+// presence to decide whether the stale-cache retry-by-name applies.
+export async function resolveSendTarget(
+  client: WebClient,
+  cache: WorkspaceCache,
+  to: string
+): Promise<SendTargetResolution> {
+  // `to` is a Slack conversation ID shape (channel/group/DM) — resolves
+  // directly, no name resolution or DM-opening involved.
+  if (CHANNEL_ID_RE.test(to)) {
+    return { status: "resolved", channelId: to };
+  }
+
+  const resolved = await resolveUserId(client, cache, to);
+  if (resolved.status !== "found") return resolved;
+
+  const channelId = await openDm(client, cache, resolved.id);
+  return { status: "resolved", channelId, userId: resolved.id };
+}
+
+// Posts to an already-resolved target, preserving the stale-cache
+// retry-once behavior for name-resolved targets (userId set). Direct
+// channel-ID sends (userId absent) have no name to fall back to, so a
+// stale-cache-style error (e.g. the bot/user was removed from the channel)
+// just propagates as-is, exactly as before this function existed.
+export async function sendToResolvedTarget(
+  client: WebClient,
+  cache: WorkspaceCache,
+  to: string,
+  text: string,
+  target: { channelId: string; userId?: string }
+): Promise<
+  | { status: "sent"; ts: string; channel: string }
+  | { status: "ambiguous"; candidates: { name: string; id: string }[] }
+  | { status: "not_found" }
+> {
+  if (!target.userId) {
+    const res = await client.chat.postMessage({
+      channel: target.channelId,
+      text,
+    });
+    return { status: "sent", ts: res.ts!, channel: res.channel! };
+  }
+
+  const userId = target.userId;
+  let channelId = target.channelId;
+
+  try {
+    const res = await client.chat.postMessage({ channel: channelId, text });
+    return { status: "sent", ts: res.ts!, channel: res.channel! };
+  } catch (err: unknown) {
+    const code = (err as { data?: { error?: string } })?.data?.error;
+    if (!code || !STALE_ERRORS.has(code)) throw err;
+
+    dropCacheEntry(cache, "users", to);
+    dropCacheEntry(cache, "dms", userId);
+    const retried = await resolveUserId(client, cache, to);
+    if (retried.status !== "found") return retried;
+
+    channelId = await openDm(client, cache, retried.id);
+    const res = await client.chat.postMessage({ channel: channelId, text });
+    return { status: "sent", ts: res.ts!, channel: res.channel! };
+  }
+}
+
 export async function sendMessageCore(
   client: WebClient,
   cache: WorkspaceCache,
@@ -91,37 +168,10 @@ export async function sendMessageCore(
   | { status: "ambiguous"; candidates: { name: string; id: string }[] }
   | { status: "not_found" }
 > {
-  // `to` is a Slack conversation ID shape (channel/group/DM) — post
-  // directly, no name resolution or DM-opening involved. There's no
-  // "name" to fall back to here, so a stale-cache-style error (e.g. the
-  // bot/user was removed from the channel) just propagates as-is rather
-  // than attempting the retry-by-name logic below, which doesn't apply.
-  if (CHANNEL_ID_RE.test(to)) {
-    const res = await client.chat.postMessage({ channel: to, text });
-    return { status: "sent", ts: res.ts!, channel: res.channel! };
-  }
+  const target = await resolveSendTarget(client, cache, to);
+  if (target.status !== "resolved") return target;
 
-  const resolved = await resolveUserId(client, cache, to);
-  if (resolved.status !== "found") return resolved;
-
-  let channelId = await openDm(client, cache, resolved.id);
-
-  try {
-    const res = await client.chat.postMessage({ channel: channelId, text });
-    return { status: "sent", ts: res.ts!, channel: res.channel! };
-  } catch (err: unknown) {
-    const code = (err as { data?: { error?: string } })?.data?.error;
-    if (!code || !STALE_ERRORS.has(code)) throw err;
-
-    dropCacheEntry(cache, "users", to);
-    dropCacheEntry(cache, "dms", resolved.id);
-    const retried = await resolveUserId(client, cache, to);
-    if (retried.status !== "found") return retried;
-
-    channelId = await openDm(client, cache, retried.id);
-    const res = await client.chat.postMessage({ channel: channelId, text });
-    return { status: "sent", ts: res.ts!, channel: res.channel! };
-  }
+  return sendToResolvedTarget(client, cache, to, text, target);
 }
 
 export function registerMessagingTools(
