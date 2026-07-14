@@ -39,10 +39,30 @@
 //    file, so that case falls back to the plain resolved path — the Slack
 //    upload call will fail on its own for a file that doesn't exist.
 
-import { readFileSync, writeFileSync, existsSync, realpathSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  realpathSync,
+  mkdirSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import ignore from "ignore";
+// `ignore`'s .d.ts declares `export default` (ESM shape) but the package
+// itself is plain CommonJS (`module.exports = factory`, no "type" or
+// "exports" field in its package.json). Under this project's
+// `moduleResolution: "NodeNext"`, both a plain `import ignore from "ignore"`
+// and `import ignoreNs = require("ignore")` used directly type-check
+// against the CJS module's synthesized namespace object instead of the
+// callable factory ("This expression is not callable"), even though it
+// resolves correctly at runtime under esbuild-based transpilation
+// (tsx/vitest), which is why this only surfaced via `tsc`. Importing via
+// `require(...)` and then explicitly reading `.default` off the resulting
+// namespace does resolve to the correct callable type — verified against a
+// standalone `tsc --noEmit` probe before applying it here.
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- required for this package's CJS/ESM interop under NodeNext; see comment above.
+import ignoreNamespace = require("ignore");
+const ignore = ignoreNamespace.default;
 
 export interface UploadDecision {
   allowed: boolean;
@@ -106,6 +126,13 @@ export function ensureDenylistFile(configDir: string): {
   if (existsSync(path)) {
     return { created: false, path };
   }
+  // Nothing else proactively creates configDir (~/.slack-mcp/ by default) —
+  // the config loaders in config.ts are read-only-if-exists, so send_file
+  // can be the very first tool called on a fresh install, before anything
+  // else has created this directory. Mirror cache.ts's owner-only
+  // directory hardening (mode 0700) rather than relying on the process
+  // umask.
+  mkdirSync(configDir, { recursive: true, mode: 0o700 });
   writeFileSync(path, DEFAULT_DENYLIST, { mode: 0o600 });
   process.stderr.write(
     `[slack_mcp] Created upload denylist at ${path} — send_file will refuse ` +

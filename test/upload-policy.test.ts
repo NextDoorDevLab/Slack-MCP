@@ -31,6 +31,27 @@ describe("upload-policy", () => {
     expect(content).toContain(".ssh/**");
   });
 
+  it("bootstraps successfully when configDir itself does not exist yet", () => {
+    // A truly fresh install: nothing has created ~/.slack-mcp/ yet (the
+    // config loaders in config.ts are read-only-if-exists), so send_file
+    // can be the very first tool call. `missingConfigDir` here is a path
+    // under `dir` that was never created by beforeEach.
+    const missingConfigDir = join(dir, "not-created-yet");
+    expect(existsSync(missingConfigDir)).toBe(false);
+
+    const result = ensureDenylistFile(missingConfigDir);
+
+    expect(result.created).toBe(true);
+    expect(existsSync(missingConfigDir)).toBe(true);
+    expect(existsSync(getDenylistPath(missingConfigDir))).toBe(true);
+
+    const decision = isUploadAllowed(
+      missingConfigDir,
+      join(homedir(), ".ssh", "id_rsa")
+    );
+    expect(decision.allowed).toBe(false);
+  });
+
   it("does not overwrite an existing denylist file", () => {
     ensureDenylistFile(dir);
     writeFileSync(
