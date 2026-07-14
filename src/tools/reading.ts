@@ -4,6 +4,7 @@ import { resolveWorkspace } from "../config.js";
 import type { ToolDeps } from "./discovery.js";
 import { paginateSlack } from "../slack-pagination.js";
 import { loadCursor, saveCursor, advanceCursor } from "../cursor.js";
+import { loadRules, matchRules, loadPolicyText } from "../policy.js";
 
 function json(data: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
@@ -215,7 +216,29 @@ export function registerReadingTools(server: McpServer, deps: ToolDeps): void {
 
       saveCursor(deps.configDir, ws, cursor);
       newMessages.sort((a, b) => parseFloat(a.ts) - parseFloat(b.ts));
-      return json({ messages: newMessages, skippedChannels });
+
+      const rules = loadRules(deps.configDir, ws);
+      const annotated = newMessages.map((m) => {
+        const match = matchRules(rules, {
+          channel: m.channel,
+          text: m.text ?? "",
+        });
+        return match.matched
+          ? {
+              ...m,
+              ruleMatch: {
+                name: match.rule.name,
+                suggestedText: match.rule.template,
+              },
+            }
+          : m;
+      });
+
+      return json({
+        messages: annotated,
+        skippedChannels,
+        policyText: loadPolicyText(deps.configDir),
+      });
     }
   );
 }

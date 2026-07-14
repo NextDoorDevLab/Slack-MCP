@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -162,6 +162,7 @@ describe("get_new_messages", () => {
     expect(parsed.messages).toEqual([
       { channel: "C01", ts: "200.0", user: "U01", text: "new one" },
     ]);
+    expect(parsed.policyText).toBeNull();
     expect(loadCursor(configDir, "playfield")).toEqual({ C01: "200.0" });
 
     rmSync(configDir, { recursive: true, force: true });
@@ -384,6 +385,70 @@ describe("get_new_messages", () => {
     expect(parsed.messages).toEqual([
       { channel: "C02", ts: "10.0", user: "U01", text: "hi" },
     ]);
+
+    rmSync(configDir, { recursive: true, force: true });
+  });
+
+  it("annotates matching messages with a ruleMatch and includes policyText", async () => {
+    const fakeClient = {
+      conversations: {
+        list: vi.fn().mockResolvedValue({
+          channels: [{ id: "C01", name: "general", is_member: true }],
+        }),
+        history: vi.fn().mockResolvedValue({
+          messages: [
+            { ts: "200.0", user: "U01", text: "found a bug in prod" },
+            { ts: "300.0", user: "U02", text: "no rule for this one" },
+          ],
+        }),
+      },
+    };
+    const configDir = mkdtempSync(join(tmpdir(), "slack-mcp-newmsg-"));
+    saveCursor(configDir, "playfield", { C01: "100.0" });
+    writeFileSync(
+      join(configDir, "rules.json"),
+      JSON.stringify([
+        { name: "bug ack", channel: "C01", pattern: "bug", template: "On it" },
+      ])
+    );
+    writeFileSync(join(configDir, "policy.md"), "## Auto-approved\n- Thanks");
+    const workspaces = { playfield: { tokenEnv: "NM6" } };
+    process.env.NM6 = "xoxp-fake";
+    const deps: ToolDeps = {
+      configDir,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      registry: new WorkspaceRegistry(workspaces, () => fakeClient as any),
+      directoryMap: {},
+      workspaces,
+    };
+
+    const server = new McpServer({ name: "test", version: "0.0.0" });
+    registerReadingTools(server, deps);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tool = (server as any)._registeredTools["get_new_messages"];
+    const result = await tool.handler(
+      { workspace: "playfield" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any
+    );
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.messages).toEqual([
+      {
+        channel: "C01",
+        ts: "200.0",
+        user: "U01",
+        text: "found a bug in prod",
+        ruleMatch: { name: "bug ack", suggestedText: "On it" },
+      },
+      {
+        channel: "C01",
+        ts: "300.0",
+        user: "U02",
+        text: "no rule for this one",
+      },
+    ]);
+    expect(parsed.policyText).toContain("Auto-approved");
 
     rmSync(configDir, { recursive: true, force: true });
   });

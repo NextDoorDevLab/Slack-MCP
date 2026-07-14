@@ -1,26 +1,37 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { getConfigDir, loadWorkspaces, loadDirectoryMap } from "./config.js";
+import {
+  getConfigDir,
+  loadWorkspaces,
+  loadDirectoryMap,
+  loadAppConfig,
+} from "./config.js";
 import { WorkspaceRegistry } from "./workspace.js";
 import { registerDiscoveryTools, type ToolDeps } from "./tools/discovery.js";
 import { registerMessagingTools } from "./tools/messaging.js";
 import { registerReadingTools } from "./tools/reading.js";
 import { registerSearchTools } from "./tools/search.js";
 import { registerCanvasTools } from "./tools/canvas.js";
+import { registerAutoReplyTools } from "./tools/auto-reply.js";
+import { SlidingWindowRateLimiter } from "./rate-limiter.js";
 
 export function createServer(): McpServer {
   return new McpServer({ name: "slack-mcp", version: "0.1.0" });
 }
 
-function buildDeps(): ToolDeps {
+function buildDeps(): ToolDeps & { rateLimiter: SlidingWindowRateLimiter } {
   const configDir = getConfigDir();
   const workspaces = loadWorkspaces(configDir);
   const directoryMap = loadDirectoryMap(configDir);
+  const appConfig = loadAppConfig(configDir);
   return {
     configDir,
     registry: new WorkspaceRegistry(workspaces),
     directoryMap,
     workspaces,
+    rateLimiter: new SlidingWindowRateLimiter(
+      appConfig.autoReplyRateLimitPerMinute
+    ),
   };
 }
 
@@ -32,6 +43,7 @@ async function main() {
   registerReadingTools(server, deps);
   registerSearchTools(server, deps);
   registerCanvasTools(server, deps);
+  registerAutoReplyTools(server, deps);
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
