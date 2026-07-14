@@ -6,6 +6,7 @@ import { registerDiscoveryTools, type ToolDeps } from "./tools/discovery.js";
 import { registerMessagingTools } from "./tools/messaging.js";
 import { registerReadingTools } from "./tools/reading.js";
 import { registerSearchTools } from "./tools/search.js";
+import { registerCanvasTools } from "./tools/canvas.js";
 
 export function createServer(): McpServer {
   return new McpServer({ name: "slack-mcp", version: "0.1.0" });
@@ -30,6 +31,7 @@ async function main() {
   registerMessagingTools(server, deps);
   registerReadingTools(server, deps);
   registerSearchTools(server, deps);
+  registerCanvasTools(server, deps);
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
