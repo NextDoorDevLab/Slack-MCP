@@ -47,7 +47,12 @@ export function registerAutoReplyTools(
       }
 
       if (result.status !== "sent") {
-        return json({ sent: false, reason: result.status });
+        // Mirror send_message's behavior: surface the full non-sent result
+        // (e.g. `candidates` on an ambiguous match) rather than collapsing
+        // it to just a reason string, so the calling agent has what it
+        // needs to retry with a disambiguated name/ID instead of hitting a
+        // dead end.
+        return json({ sent: false, ...result });
       }
 
       appendAuditLog(deps.configDir, {

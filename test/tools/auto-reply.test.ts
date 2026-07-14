@@ -15,8 +15,12 @@ import type { ToolDeps } from "../../src/tools/discovery.js";
 // cache rather than posting directly. The brief's fakeClient has no
 // `users.list`, so (as in test/tools/messaging.test.ts) the cache is
 // pre-seeded here to satisfy that resolution without a real API call.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function setup(fakeClient: any, limitPerMinute: number | null) {
+function setup(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  fakeClient: any,
+  limitPerMinute: number | null,
+  cacheUsers: Record<string, string> = { u01: "U01" }
+) {
   const configDir = mkdtempSync(join(tmpdir(), "slack-mcp-autoreply-"));
   const workspaces = { playfield: { tokenEnv: "AR" } };
   process.env.AR = "xoxp-fake";
@@ -28,7 +32,7 @@ function setup(fakeClient: any, limitPerMinute: number | null) {
     rateLimiter: new SlidingWindowRateLimiter(limitPerMinute),
   };
   saveCache(configDir, "playfield", {
-    users: { u01: "U01" },
+    users: cacheUsers,
     channels: {},
     dms: {},
     updatedAt: "",
@@ -101,6 +105,48 @@ describe("auto_reply", () => {
       reason: "rate_limited",
     });
     expect(readAuditLog(deps.configDir)).toHaveLength(1);
+
+    rmSync(deps.configDir, { recursive: true, force: true });
+  });
+
+  it("surfaces candidates and does not send or log on an ambiguous match", async () => {
+    const fakeClient = {
+      conversations: {
+        open: vi.fn(),
+      },
+      chat: { postMessage: vi.fn() },
+    };
+    const deps = setup(fakeClient, 5, {
+      "john smith": "U01",
+      "john osei": "U02",
+    });
+    const server = new McpServer({ name: "test", version: "0.0.0" });
+    registerAutoReplyTools(server, deps);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tool = (server as any)._registeredTools["auto_reply"];
+
+    const result = await tool.handler(
+      {
+        to: "john",
+        text: "On it",
+        matchedRule: "bug ack",
+        workspace: "playfield",
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any
+    );
+
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      sent: false,
+      status: "ambiguous",
+      candidates: [
+        { name: "john smith", id: "U01" },
+        { name: "john osei", id: "U02" },
+      ],
+    });
+    expect(fakeClient.conversations.open).not.toHaveBeenCalled();
+    expect(fakeClient.chat.postMessage).not.toHaveBeenCalled();
+    expect(readAuditLog(deps.configDir)).toHaveLength(0);
 
     rmSync(deps.configDir, { recursive: true, force: true });
   });
