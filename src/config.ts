@@ -50,8 +50,10 @@ export function resolveWorkspaceFromCwd(
 ): string | null {
   let best: { prefix: string; workspace: string } | null = null;
   for (const [prefix, workspace] of Object.entries(directoryMap)) {
-    if ((cwd === prefix || cwd.startsWith(prefix + "/")) &&
-        (best === null || prefix.length > best.prefix.length)) {
+    if (
+      (cwd === prefix || cwd.startsWith(prefix + "/")) &&
+      (best === null || prefix.length > best.prefix.length)
+    ) {
       best = { prefix, workspace };
     }
   }

@@ -20,9 +20,9 @@ describe("resolveWorkspaceFromCwd", () => {
   };
 
   it("matches an exact directory", () => {
-    expect(resolveWorkspaceFromCwd("/home/bakhtarian/projects/tessly", map)).toBe(
-      "nextdoordev"
-    );
+    expect(
+      resolveWorkspaceFromCwd("/home/bakhtarian/projects/tessly", map)
+    ).toBe("nextdoordev");
   });
 
   it("matches a subdirectory via longest prefix", () => {
@@ -35,7 +35,9 @@ describe("resolveWorkspaceFromCwd", () => {
   });
 
   it("returns null when nothing matches", () => {
-    expect(resolveWorkspaceFromCwd("/home/bakhtarian/projects/other", map)).toBeNull();
+    expect(
+      resolveWorkspaceFromCwd("/home/bakhtarian/projects/other", map)
+    ).toBeNull();
   });
 
   it("prefers the longer of two overlapping prefixes", () => {
@@ -60,25 +62,45 @@ describe("resolveWorkspace", () => {
 
   it("uses the explicit workspace when given", () => {
     expect(
-      resolveWorkspace("playfield", "/home/bakhtarian/projects/tessly", map, workspaces)
+      resolveWorkspace(
+        "playfield",
+        "/home/bakhtarian/projects/tessly",
+        map,
+        workspaces
+      )
     ).toBe("playfield");
   });
 
   it("falls back to directory-map resolution", () => {
     expect(
-      resolveWorkspace(undefined, "/home/bakhtarian/projects/tessly", map, workspaces)
+      resolveWorkspace(
+        undefined,
+        "/home/bakhtarian/projects/tessly",
+        map,
+        workspaces
+      )
     ).toBe("nextdoordev");
   });
 
   it("throws listing configured workspaces when unresolvable", () => {
     expect(() =>
-      resolveWorkspace(undefined, "/home/bakhtarian/projects/other", map, workspaces)
+      resolveWorkspace(
+        undefined,
+        "/home/bakhtarian/projects/other",
+        map,
+        workspaces
+      )
     ).toThrowError(/nextdoordev, playfield/);
   });
 
   it("throws when the explicit workspace is not configured", () => {
     expect(() =>
-      resolveWorkspace("unknown-ws", "/home/bakhtarian/projects/tessly", map, workspaces)
+      resolveWorkspace(
+        "unknown-ws",
+        "/home/bakhtarian/projects/tessly",
+        map,
+        workspaces
+      )
     ).toThrowError(/nextdoordev, playfield/);
   });
 });
@@ -139,7 +161,10 @@ describe("load* functions", () => {
       const data: DirectoryMap = {
         "/home/bakhtarian/projects/tessly": "nextdoordev",
       };
-      writeFileSync(join(configDir, "directory-map.json"), JSON.stringify(data));
+      writeFileSync(
+        join(configDir, "directory-map.json"),
+        JSON.stringify(data)
+      );
       expect(loadDirectoryMap(configDir)).toEqual(data);
     });
   });
@@ -167,7 +192,9 @@ describe("load* functions", () => {
       const path = join(configDir, "workspaces.json");
       writeFileSync(path, "{ not valid json");
       expect(() => loadWorkspaces(configDir)).toThrowError(
-        new RegExp(`Malformed JSON in ${path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`)
+        new RegExp(
+          `Malformed JSON in ${path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`
+        )
       );
     });
   });
