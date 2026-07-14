@@ -40,9 +40,9 @@ describe("canvas tools", () => {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const read = (server as any)._registeredTools["read_canvas"];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const got = await read.handler(
       { canvasId: "F01", workspace: "playfield" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       {} as any
     );
     expect(JSON.parse(got.content[0].text)).toEqual({

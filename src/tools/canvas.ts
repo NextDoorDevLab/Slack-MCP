@@ -27,8 +27,7 @@ export function registerCanvasTools(server: McpServer, deps: ToolDeps): void {
       const res = await client.canvases.create({
         title,
         document_content: { type: "markdown", markdown },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any);
+      });
       return json({ canvasId: res.canvas_id });
     }
   );
@@ -45,10 +44,8 @@ export function registerCanvasTools(server: McpServer, deps: ToolDeps): void {
         deps.workspaces
       );
       const { client } = deps.registry.get(ws);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const res = await client.files.info({ file: canvasId } as any);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return json({ markdown: (res as any).content });
+      const res = await client.files.info({ file: canvasId });
+      return json({ markdown: res.content });
     }
   );
 
@@ -76,10 +73,8 @@ export function registerCanvasTools(server: McpServer, deps: ToolDeps): void {
             document_content: { type: "markdown", markdown },
           },
         ],
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return json({ ok: (res as any).ok });
+      });
+      return json({ ok: res.ok });
     }
   );
 }
