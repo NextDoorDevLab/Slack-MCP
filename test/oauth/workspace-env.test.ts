@@ -20,9 +20,7 @@ describe("workspace-env", () => {
   });
 
   it("derives the client id, client secret, and token env var names", () => {
-    expect(deriveClientIdEnvVar("playfield")).toBe(
-      "SLACK_CLIENT_ID_PLAYFIELD"
-    );
+    expect(deriveClientIdEnvVar("playfield")).toBe("SLACK_CLIENT_ID_PLAYFIELD");
     expect(deriveClientSecretEnvVar("playfield")).toBe(
       "SLACK_CLIENT_SECRET_PLAYFIELD"
     );
