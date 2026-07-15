@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, statSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+  statSync,
+  chmodSync,
+} from "node:fs";
 import { tmpdir, homedir, platform } from "node:os";
 import { join } from "node:path";
 import {
@@ -241,5 +247,15 @@ describe("saveWorkspaces", () => {
     });
     const fileMode = statSync(join(configDir, "workspaces.json")).mode & 0o777;
     expect(fileMode).toBe(0o600);
+  });
+
+  it("re-hardens permissions on a pre-existing loose-permission config directory", () => {
+    if (platform() === "win32") return;
+    chmodSync(configDir, 0o755);
+    saveWorkspaces(configDir, {
+      nextdoordev: { tokenEnv: "SLACK_TOKEN_NEXTDOORDEV" },
+    });
+    const dirMode = statSync(configDir).mode & 0o777;
+    expect(dirMode).toBe(0o700);
   });
 });

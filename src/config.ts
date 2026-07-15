@@ -48,14 +48,16 @@ export function saveWorkspaces(
   // file is a read path for which env var holds each workspace's live
   // Slack token, so it gets the same treatment as the token/cache files
   // themselves rather than relying on the process umask.
+  // mkdirSync/writeFileSync's mode option only applies when the
+  // directory/file is newly created; it does not re-chmod a pre-existing
+  // path with looser permissions, so the explicit chmodSync calls below
+  // are what actually re-harden one.
   mkdirSync(configDir, { recursive: true, mode: 0o700 });
+  chmodSync(configDir, 0o700);
   const workspacesPath = join(configDir, "workspaces.json");
   writeFileSync(workspacesPath, JSON.stringify(workspaces, null, 2), {
     mode: 0o600,
   });
-  // writeFileSync's mode option only applies when the file is newly
-  // created; it does not re-chmod a pre-existing file with looser
-  // permissions, so this call is what actually re-hardens one.
   chmodSync(workspacesPath, 0o600);
 }
 
