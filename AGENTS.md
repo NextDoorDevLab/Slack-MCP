@@ -114,10 +114,14 @@ names** — it never guesses.
   agent invocation without reading its token-burn warning first — a busy
   channel can exhaust a model quota fast with no human in the loop to
   notice.
-- Don't assume `auto_reply` is safe to call just because it exists — with
-  no `policy.md`/`rules.json` configured, it never sends (by design, not a
-  bug). Check `~/.slack-mcp/policy.md` and `rules.json` exist and are
-  populated before relying on it.
+- Don't assume `auto_reply` is self-gating just because its schema requires
+  a `matchedRule` argument — it isn't. The tool has no code-level check
+  that `policy.md`/`rules.json` exist, or that `matchedRule` corresponds to
+  a real rule; it sends whenever the target resolves and the rate limiter
+  allows it. The actual judgment gate lives in `get_new_messages`, which
+  annotates each message with `ruleMatch`/`policyText` for you to consult —
+  read that annotation for the specific message first, and only call
+  `auto_reply` when it genuinely supports sending.
 - Don't treat the [upload denylist](README.md#upload-denylist-upload-denylist)
   as a safety net you can ignore — it's a denylist, not an allowlist; a
   `send_file` call driven by untrusted channel content is a real exfiltration
