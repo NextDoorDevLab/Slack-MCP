@@ -28,10 +28,10 @@ Requires Node.js 20+.
 The same checks CI runs:
 
 ```bash
+npm run lint          # ESLint
+npm run format:check  # Prettier (dry run)
 npm run build         # TypeScript compile
-npm run lint           # ESLint
-npm run format:check   # Prettier (dry run)
-npm test                # Vitest
+npm test              # Vitest
 ```
 
 Run `npm run format` to auto-fix formatting issues.

@@ -4,8 +4,8 @@ This project adopts the [Contributor Covenant 2.1](https://www.contributor-coven
 
 ## Reporting
 
-To report behaviour that violates this Code of Conduct, please contact the maintainer privately — [Tolu T.](mailto:tolu@nextdoordev.nl). All reports are reviewed and investigated promptly and fairly. The maintainer will respect the privacy and security of the reporter.
+To report behavior that violates this Code of Conduct, please contact the maintainer privately — [Tolu T.](mailto:tolu@nextdoordev.nl). All reports are reviewed and investigated promptly and fairly. The maintainer will respect the privacy and security of the reporter.
 
 ## Enforcement
 
-The maintainer is responsible for clarifying and enforcing the standards described in the linked Contributor Covenant, and may take any action deemed appropriate — including warning, temporary suspension, or permanent removal from the project — in response to behaviour deemed inappropriate, threatening, or unwelcome.
+The maintainer is responsible for clarifying and enforcing the standards described in the linked Contributor Covenant, and may take any action deemed appropriate — including warning, temporary suspension, or permanent removal from the project — in response to behavior deemed inappropriate, threatening, or unwelcome.
