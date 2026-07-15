@@ -8,6 +8,9 @@ A generic [MCP](https://modelcontextprotocol.io) server for sending and
 reading Slack messages **as yourself**, across one or more workspaces, from
 Claude Code or any MCP client.
 
+> **AI agents:** read [AGENTS.md](AGENTS.md) first — it's a dense setup and
+> usage reference written for automated integration.
+
 ## Why
 
 If you work across several Slack workspaces from different project
@@ -342,8 +345,8 @@ it:
   [`daemon/README.md`](daemon/README.md) for the token-burn risk of wiring
   real-time events to an agent invocation.
 
-If you find a security issue, please open an issue on this repo rather than
-a public discussion thread.
+Found a vulnerability? Please don't open a public issue — see
+[SECURITY.md](SECURITY.md) for how to report it privately.
 
 ## Testing and CI
 
@@ -353,16 +356,14 @@ npm test
 
 Every push and pull request against `master` runs the GitHub Actions
 pipeline in `.github/workflows/ci.yml`: build, lint, format check, and the
-test suite. CI runs these checks on every push and PR, but merging isn't
-blocked on them by default — maintainers should enable a branch protection
-rule on `master` requiring this workflow to pass if that's wanted.
+test suite. `master` is branch-protected — merging requires the CI workflow
+to pass and at least one approving review, enforced even for maintainers.
 
 ## Contributing
 
-Issues and pull requests are welcome. Before opening a PR: run `npm test`,
-`npm run lint`, and `npm run format:check` locally — the same checks CI
-runs. Keep changes focused and add tests for new behavior; this codebase
-favors small, well-tested modules over large ones.
+Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md)
+for local setup, the quality gates CI runs, and the PR workflow. This
+project follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
