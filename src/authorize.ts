@@ -53,18 +53,6 @@ function waitForCallback(
         server.close();
       };
 
-      if (params.error) {
-        finish(
-          200,
-          "<html><body>Authorization was denied. You can close this tab.</body></html>"
-        );
-        reject(
-          new Error(
-            `Slack returned error=${params.error} (authorization denied).`
-          )
-        );
-        return;
-      }
       if (params.state !== expectedState) {
         finish(
           400,
@@ -73,6 +61,18 @@ function waitForCallback(
         reject(
           new Error(
             "State parameter did not match — possible CSRF attempt or stale callback. Aborting."
+          )
+        );
+        return;
+      }
+      if (params.error) {
+        finish(
+          200,
+          "<html><body>Authorization was denied. You can close this tab.</body></html>"
+        );
+        reject(
+          new Error(
+            `Slack returned error=${params.error} (authorization denied).`
           )
         );
         return;
