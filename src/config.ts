@@ -1,4 +1,10 @@
-import { readFileSync, existsSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  mkdirSync,
+  chmodSync,
+} from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
@@ -32,6 +38,27 @@ function readJsonIfExists<T>(path: string, fallback: T): T {
 
 export function loadWorkspaces(configDir: string): WorkspacesFile {
   return readJsonIfExists(join(configDir, "workspaces.json"), {});
+}
+
+export function saveWorkspaces(
+  configDir: string,
+  workspaces: WorkspacesFile
+): void {
+  // Mirrors cache.ts's owner-only hardening (0700 dir, 0600 file) — this
+  // file is a read path for which env var holds each workspace's live
+  // Slack token, so it gets the same treatment as the token/cache files
+  // themselves rather than relying on the process umask.
+  // mkdirSync/writeFileSync's mode option only applies when the
+  // directory/file is newly created; it does not re-chmod a pre-existing
+  // path with looser permissions, so the explicit chmodSync calls below
+  // are what actually re-harden one.
+  mkdirSync(configDir, { recursive: true, mode: 0o700 });
+  chmodSync(configDir, 0o700);
+  const workspacesPath = join(configDir, "workspaces.json");
+  writeFileSync(workspacesPath, JSON.stringify(workspaces, null, 2), {
+    mode: 0o600,
+  });
+  chmodSync(workspacesPath, 0o600);
 }
 
 export function loadDirectoryMap(configDir: string): DirectoryMap {
