@@ -61,6 +61,14 @@ describe("upsertEnvVar", () => {
     );
   });
 
+  it("re-hardens file permissions when updating an existing file with loose permissions", () => {
+    if (platform() === "win32") return;
+    writeFileSync(envPath, "OTHER_VAR=1\n", { mode: 0o644 });
+    upsertEnvVar(envPath, "SLACK_TOKEN_PLAYFIELD", "xoxp-new");
+    const mode = statSync(envPath).mode & 0o777;
+    expect(mode).toBe(0o600);
+  });
+
   it("writes the file as owner-only (0600)", () => {
     if (platform() === "win32") return;
     upsertEnvVar(envPath, "SLACK_TOKEN_PLAYFIELD", "xoxp-abc");
