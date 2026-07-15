@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+  readFileSync,
+  existsSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -89,6 +95,7 @@ describe("applyToken", () => {
     expect(
       JSON.parse(readFileSync(join(configDir, "workspaces.json"), "utf-8"))
     ).toEqual({ "existing-ws": { tokenEnv: "SLACK_TOKEN_COLLIDE" } });
+    expect(existsSync(envPath)).toBe(false);
   });
 
   it("does not flag re-applying a token for the workspace's own existing entry as a collision", () => {

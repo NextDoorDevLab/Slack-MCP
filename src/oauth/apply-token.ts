@@ -31,11 +31,12 @@ export interface ApplyTokenResult {
 
 // Reloads workspaces.json immediately before writing (rather than reusing
 // a snapshot loaded before the OAuth browser wait) and re-checks for a
-// token-env-var collision against that fresh state. This catches a second
-// `authorize` run for a colliding workspace name that completed during
-// this run's browser wait, instead of silently overwriting the other
-// workspace's token — the same guarantee the earlier, pre-wait collision
-// check provides, re-validated at the point of the actual write.
+// token-env-var collision against that fresh state. This shrinks — but,
+// without file locking, does not fully eliminate — the window in which a
+// second `authorize` run for a colliding workspace name could silently
+// overwrite this run's token: it now takes two concurrent runs racing
+// within the few synchronous fs calls below, rather than within the up to
+// 5-minute OAuth browser wait.
 export function applyToken(options: ApplyTokenOptions): ApplyTokenResult {
   const { configDir, envPath, workspace, tokenVar, accessToken, seed } =
     options;
