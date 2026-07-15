@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { WebClient } from "@slack/web-api";
@@ -19,6 +19,16 @@ import { getConfigDir, loadWorkspaces, saveWorkspaces } from "./config.js";
 const CALLBACK_PATH = "/slack/oauth/callback";
 const DEFAULT_PORT = 51827;
 const CALLBACK_TIMEOUT_MS = 5 * 60 * 1000;
+const GENERIC_FAILURE_HTML =
+  "<html><body>Something went wrong. You can close this tab.</body></html>";
+
+// Constant-time comparison for the OAuth state token: a length check would
+// leak timing information about how many leading bytes matched otherwise.
+function safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
+}
 
 interface CallbackOutcome {
   code: string;
@@ -40,11 +50,14 @@ function waitForCallback(
     let settled = false;
 
     const server = createServer((req, res) => {
-      if (!req.url || !req.url.startsWith(CALLBACK_PATH)) {
+      const requestPath = req.url
+        ? new URL(req.url, "http://127.0.0.1").pathname
+        : "";
+      if (requestPath !== CALLBACK_PATH) {
         res.writeHead(404).end();
         return;
       }
-      const params = parseCallbackParams(req.url);
+      const params = parseCallbackParams(req.url!);
 
       const finish = (status: number, body: string) => {
         res.writeHead(status, { "Content-Type": "text/html" }).end(body);
@@ -53,11 +66,8 @@ function waitForCallback(
         server.close();
       };
 
-      if (params.state !== expectedState) {
-        finish(
-          400,
-          "<html><body>Something went wrong. You can close this tab.</body></html>"
-        );
+      if (!params.state || !safeEqual(params.state, expectedState)) {
+        finish(400, GENERIC_FAILURE_HTML);
         reject(
           new Error(
             "State parameter did not match — possible CSRF attempt or stale callback. Aborting."
@@ -78,10 +88,7 @@ function waitForCallback(
         return;
       }
       if (!params.code) {
-        finish(
-          400,
-          "<html><body>Something went wrong. You can close this tab.</body></html>"
-        );
+        finish(400, GENERIC_FAILURE_HTML);
         reject(new Error("Callback did not include an authorization code."));
         return;
       }
@@ -141,7 +148,43 @@ async function main(): Promise<void> {
     return;
   }
 
-  const port = Number(process.env.SLACK_MCP_OAUTH_PORT ?? DEFAULT_PORT);
+  // Resolved and validated up front, before opening a browser or touching
+  // the network, so a name collision fails fast instead of after the user
+  // has already clicked through Slack's consent screen.
+  const configDir = getConfigDir();
+  const workspaces = loadWorkspaces(configDir);
+  const existingEntry = workspaces[workspace];
+  const tokenVar = existingEntry?.tokenEnv ?? deriveTokenEnvVar(workspace);
+
+  // Different workspace names can derive the same env var name (e.g.
+  // "client-a" and "client_a" both become SLACK_TOKEN_CLIENT_A), which
+  // would otherwise silently overwrite another workspace's token in .env.
+  const collision = Object.entries(workspaces).find(
+    ([name, entry]) => name !== workspace && entry.tokenEnv === tokenVar
+  );
+  if (collision) {
+    const [collidingName] = collision;
+    console.error(
+      `Workspace "${workspace}" derives the same token env var (${tokenVar}) ` +
+        `as existing workspace "${collidingName}". Choose a different ` +
+        `workspace name, or manually set a distinct tokenEnv for one of ` +
+        `them in ${join(configDir, "workspaces.json")}.`
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  const rawPort = process.env.SLACK_MCP_OAUTH_PORT;
+  const port = rawPort !== undefined ? Number(rawPort) : DEFAULT_PORT;
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    console.error(
+      `Invalid SLACK_MCP_OAUTH_PORT "${rawPort}" — must be an integer ` +
+        `between 1 and 65535.`
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   const redirectUri = `http://127.0.0.1:${port}${CALLBACK_PATH}`;
   const state = randomBytes(32).toString("hex");
   const authorizeUrl = buildAuthorizeUrl({
@@ -161,8 +204,8 @@ async function main(): Promise<void> {
     );
     code = outcome.code;
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException)?.code;
-    if (code === "EADDRINUSE") {
+    const errCode = (err as NodeJS.ErrnoException)?.code;
+    if (errCode === "EADDRINUSE") {
       console.error(
         `Port ${port} is already in use. Set SLACK_MCP_OAUTH_PORT to a free ` +
           `port and add the matching http://127.0.0.1:<port>${CALLBACK_PATH} ` +
@@ -193,15 +236,14 @@ async function main(): Promise<void> {
     return;
   }
 
-  const configDir = getConfigDir();
-  const workspaces = loadWorkspaces(configDir);
-  const existingEntry = workspaces[workspace];
-  const tokenVar = existingEntry?.tokenEnv ?? deriveTokenEnvVar(workspace);
-
   const envExamplePath = join(process.cwd(), ".env.example");
   const seed = existsSync(envExamplePath)
     ? readFileSync(envExamplePath, "utf-8")
     : "";
+  // .env (the secret) is written first, then workspaces.json (a reference
+  // to which env var holds it). If the second write fails, .env already
+  // has the valid token and a retry is idempotent — the ordering is
+  // intentional, not incidental.
   upsertEnvVar(join(process.cwd(), ".env"), tokenVar, accessToken, seed);
 
   workspaces[workspace] = { ...existingEntry, tokenEnv: tokenVar };
