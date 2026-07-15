@@ -86,10 +86,34 @@ the same config.
    **From an app manifest** → paste the contents of
    `manifest/slack-app-manifest.yaml` → install the app into that workspace.
 
-   Copy the **User OAuth Token** (`xoxp-...`) from the app's
-   **OAuth & Permissions** page.
+   Copy the **Client ID** and **Client Secret** from the app's **Basic
+   Information** page (App Credentials section) into your `.env` as
+   `SLACK_CLIENT_ID_<WORKSPACE>` / `SLACK_CLIENT_SECRET_<WORKSPACE>` (see
+   `.env.example`), then run:
+
+   ```bash
+   npm run authorize -- <workspace-name>
+   ```
+
+   This opens your browser to Slack's authorization page; after you click
+   **Allow**, it writes the resulting user token to `.env` and creates or
+   updates the matching entry in `~/.slack-mcp/workspaces.json` for you —
+   you can skip step 3 below. `<workspace-name>` can be any short name you
+   want to refer to this workspace by (e.g. `nextdoordev`); it doesn't need
+   to match Slack's own workspace name. If port `51827` is already in use on
+   your machine, set `SLACK_MCP_OAUTH_PORT` to a free port and add the
+   matching `http://localhost:<port>/slack/oauth/callback` URL to the app's
+   **OAuth & Permissions → Redirect URLs** first.
+
+   **Fallback (no browser on this machine, or you'd rather not):** copy the
+   **User OAuth Token** (`xoxp-...`) directly from the app's **OAuth &
+   Permissions** page instead, and continue to step 3 to configure it by
+   hand.
 
 3. **Configure workspaces**
+
+   Skip this step if you used `npm run authorize` in step 2 — it already
+   created or updated this file for you.
 
    Create `~/.slack-mcp/workspaces.json`:
 
