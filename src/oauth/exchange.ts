@@ -24,8 +24,12 @@ export async function exchangeCodeForToken(
 
   const accessToken = response.authed_user?.access_token;
   if (!accessToken) {
+    // Deliberately does not include the raw response: it may carry a live
+    // bot access_token under some response shapes, and this message can
+    // end up in a terminal or CI log via authorize.ts's console.error.
     throw new Error(
-      `Slack did not return a user access token. Response: ${JSON.stringify(response)}`
+      `Slack did not return a user access token (ok=${response.ok}, ` +
+        `error=${response.error ?? "none"}, warning=${response.warning ?? "none"}).`
     );
   }
   return { accessToken };
