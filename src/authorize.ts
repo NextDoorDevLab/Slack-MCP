@@ -8,13 +8,13 @@ import { USER_SCOPES } from "./oauth/scopes.js";
 import { buildAuthorizeUrl } from "./oauth/url.js";
 import { parseCallbackParams } from "./oauth/callback.js";
 import { exchangeCodeForToken } from "./oauth/exchange.js";
-import { upsertEnvVar } from "./oauth/env-writer.js";
+import { applyToken, findTokenEnvCollision } from "./oauth/apply-token.js";
 import {
   deriveClientIdEnvVar,
   deriveClientSecretEnvVar,
   deriveTokenEnvVar,
 } from "./oauth/workspace-env.js";
-import { getConfigDir, loadWorkspaces, saveWorkspaces } from "./config.js";
+import { getConfigDir, loadWorkspaces } from "./config.js";
 
 const CALLBACK_PATH = "/slack/oauth/callback";
 const DEFAULT_PORT = 51827;
@@ -159,14 +159,15 @@ async function main(): Promise<void> {
   // Different workspace names can derive the same env var name (e.g.
   // "client-a" and "client_a" both become SLACK_TOKEN_CLIENT_A), which
   // would otherwise silently overwrite another workspace's token in .env.
-  const collision = Object.entries(workspaces).find(
-    ([name, entry]) => name !== workspace && entry.tokenEnv === tokenVar
-  );
-  if (collision) {
-    const [collidingName] = collision;
+  // Re-checked against a freshly reloaded snapshot in applyToken() below,
+  // right before the actual write — this early check only fails fast so
+  // an obvious collision doesn't cost the user a trip through Slack's
+  // consent screen first.
+  const earlyCollision = findTokenEnvCollision(workspaces, workspace, tokenVar);
+  if (earlyCollision) {
     console.error(
       `Workspace "${workspace}" derives the same token env var (${tokenVar}) ` +
-        `as existing workspace "${collidingName}". Choose a different ` +
+        `as existing workspace "${earlyCollision}". Choose a different ` +
         `workspace name, or manually set a distinct tokenEnv for one of ` +
         `them in ${join(configDir, "workspaces.json")}.`
     );
@@ -244,16 +245,24 @@ async function main(): Promise<void> {
   // to which env var holds it). If the second write fails, .env already
   // has the valid token and a retry is idempotent — the ordering is
   // intentional, not incidental.
-  upsertEnvVar(join(process.cwd(), ".env"), tokenVar, accessToken, seed);
-
-  // Reload rather than reuse the workspaces snapshot from before the (up
-  // to 5-minute) browser wait, so a concurrent authorize run for a
-  // different workspace during that window isn't clobbered by writing
-  // back a stale copy. Doesn't fully eliminate the race without file
-  // locking, but shrinks the window to just this write.
-  const latestWorkspaces = loadWorkspaces(configDir);
-  latestWorkspaces[workspace] = { ...existingEntry, tokenEnv: tokenVar };
-  saveWorkspaces(configDir, latestWorkspaces);
+  const applyResult = applyToken({
+    configDir,
+    envPath: join(process.cwd(), ".env"),
+    workspace,
+    tokenVar,
+    accessToken,
+    seed,
+  });
+  if (applyResult.collidingWorkspace) {
+    console.error(
+      `Workspace "${workspace}" derives the same token env var (${tokenVar}) ` +
+        `as workspace "${applyResult.collidingWorkspace}", which was ` +
+        `configured while this authorization was in progress. Nothing was ` +
+        `written — re-run authorize once the naming conflict is resolved.`
+    );
+    process.exitCode = 1;
+    return;
+  }
 
   console.log(
     `Authorized "${workspace}". Wrote ${tokenVar} to .env and updated ` +
