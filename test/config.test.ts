@@ -232,4 +232,14 @@ describe("saveWorkspaces", () => {
     expect(fileMode).toBe(0o600);
     expect(dirMode).toBe(0o700);
   });
+
+  it("re-hardens permissions when overwriting a pre-existing loose-permission workspaces.json", () => {
+    if (platform() === "win32") return;
+    writeFileSync(join(configDir, "workspaces.json"), "{}", { mode: 0o644 });
+    saveWorkspaces(configDir, {
+      nextdoordev: { tokenEnv: "SLACK_TOKEN_NEXTDOORDEV" },
+    });
+    const fileMode = statSync(join(configDir, "workspaces.json")).mode & 0o777;
+    expect(fileMode).toBe(0o600);
+  });
 });

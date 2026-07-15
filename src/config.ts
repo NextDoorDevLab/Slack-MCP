@@ -1,4 +1,10 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  mkdirSync,
+  chmodSync,
+} from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
@@ -43,11 +49,14 @@ export function saveWorkspaces(
   // Slack token, so it gets the same treatment as the token/cache files
   // themselves rather than relying on the process umask.
   mkdirSync(configDir, { recursive: true, mode: 0o700 });
-  writeFileSync(
-    join(configDir, "workspaces.json"),
-    JSON.stringify(workspaces, null, 2),
-    { mode: 0o600 }
-  );
+  const workspacesPath = join(configDir, "workspaces.json");
+  writeFileSync(workspacesPath, JSON.stringify(workspaces, null, 2), {
+    mode: 0o600,
+  });
+  // writeFileSync's mode option only applies when the file is newly
+  // created; it does not re-chmod a pre-existing file with looser
+  // permissions, so this call is what actually re-hardens one.
+  chmodSync(workspacesPath, 0o600);
 }
 
 export function loadDirectoryMap(configDir: string): DirectoryMap {
