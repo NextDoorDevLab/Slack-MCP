@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir, homedir } from "node:os";
+import { mkdtempSync, rmSync, writeFileSync, statSync } from "node:fs";
+import { tmpdir, homedir, platform } from "node:os";
 import { join } from "node:path";
 import {
   resolveWorkspaceFromCwd,
   resolveWorkspace,
   getConfigDir,
   loadWorkspaces,
+  saveWorkspaces,
   loadDirectoryMap,
   loadAppConfig,
   type DirectoryMap,
@@ -187,5 +188,48 @@ describe("load* functions", () => {
         )
       );
     });
+  });
+});
+
+describe("saveWorkspaces", () => {
+  let configDir: string;
+
+  beforeEach(() => {
+    configDir = mkdtempSync(join(tmpdir(), "slack-mcp-config-save-"));
+  });
+
+  afterEach(() => {
+    rmSync(configDir, { recursive: true, force: true });
+  });
+
+  it("creates the config directory and workspaces.json when neither exists", () => {
+    const data: WorkspacesFile = {
+      nextdoordev: { tokenEnv: "SLACK_TOKEN_NEXTDOORDEV" },
+    };
+    saveWorkspaces(configDir, data);
+    expect(loadWorkspaces(configDir)).toEqual(data);
+  });
+
+  it("overwrites an existing workspaces.json with the given contents", () => {
+    saveWorkspaces(configDir, {
+      nextdoordev: { tokenEnv: "SLACK_TOKEN_NEXTDOORDEV" },
+    });
+    const updated: WorkspacesFile = {
+      nextdoordev: { tokenEnv: "SLACK_TOKEN_NEXTDOORDEV" },
+      playfield: { tokenEnv: "SLACK_TOKEN_PLAYFIELD" },
+    };
+    saveWorkspaces(configDir, updated);
+    expect(loadWorkspaces(configDir)).toEqual(updated);
+  });
+
+  it("writes the file and directory as owner-only (0600/0700)", () => {
+    if (platform() === "win32") return;
+    saveWorkspaces(configDir, {
+      nextdoordev: { tokenEnv: "SLACK_TOKEN_NEXTDOORDEV" },
+    });
+    const fileMode = statSync(join(configDir, "workspaces.json")).mode & 0o777;
+    const dirMode = statSync(configDir).mode & 0o777;
+    expect(fileMode).toBe(0o600);
+    expect(dirMode).toBe(0o700);
   });
 });

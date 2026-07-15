@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
@@ -32,6 +32,22 @@ function readJsonIfExists<T>(path: string, fallback: T): T {
 
 export function loadWorkspaces(configDir: string): WorkspacesFile {
   return readJsonIfExists(join(configDir, "workspaces.json"), {});
+}
+
+export function saveWorkspaces(
+  configDir: string,
+  workspaces: WorkspacesFile
+): void {
+  // Mirrors cache.ts's owner-only hardening (0700 dir, 0600 file) — this
+  // file is a read path for which env var holds each workspace's live
+  // Slack token, so it gets the same treatment as the token/cache files
+  // themselves rather than relying on the process umask.
+  mkdirSync(configDir, { recursive: true, mode: 0o700 });
+  writeFileSync(
+    join(configDir, "workspaces.json"),
+    JSON.stringify(workspaces, null, 2),
+    { mode: 0o600 }
+  );
 }
 
 export function loadDirectoryMap(configDir: string): DirectoryMap {
