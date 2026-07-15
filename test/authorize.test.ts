@@ -63,6 +63,30 @@ describe("authorize CLI — token env var collision", () => {
     expect(result.stderr).toMatch(/SLACK_TOKEN_COLLIDE/);
     expect(result.stderr).toMatch(/existing-ws/);
   });
+
+  it("does not flag a workspace re-authorizing against its own existing entry as a collision", () => {
+    // "existing-ws" already owns SLACK_TOKEN_COLLIDE in workspaces.json.
+    // Re-running authorize for "existing-ws" itself must not trip the
+    // collision check. An invalid port forces a fast, deterministic exit
+    // on the next synchronous check instead of opening a browser, which
+    // proves the collision check was reached and passed silently.
+    const env = {
+      ...process.env,
+      SLACK_MCP_CONFIG_DIR: configDir,
+      SLACK_CLIENT_ID_EXISTING_WS: "dummy-id",
+      SLACK_CLIENT_SECRET_EXISTING_WS: "dummy-secret",
+      SLACK_MCP_OAUTH_PORT: "not-a-number",
+    };
+
+    const result = spawnSync(
+      "npx",
+      ["tsx", "src/authorize.ts", "existing-ws"],
+      { encoding: "utf-8", env }
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/Invalid SLACK_MCP_OAUTH_PORT/);
+    expect(result.stderr).not.toMatch(/derives the same token env var/);
+  });
 });
 
 describe("authorize CLI — invalid SLACK_MCP_OAUTH_PORT", () => {

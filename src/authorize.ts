@@ -246,8 +246,14 @@ async function main(): Promise<void> {
   // intentional, not incidental.
   upsertEnvVar(join(process.cwd(), ".env"), tokenVar, accessToken, seed);
 
-  workspaces[workspace] = { ...existingEntry, tokenEnv: tokenVar };
-  saveWorkspaces(configDir, workspaces);
+  // Reload rather than reuse the workspaces snapshot from before the (up
+  // to 5-minute) browser wait, so a concurrent authorize run for a
+  // different workspace during that window isn't clobbered by writing
+  // back a stale copy. Doesn't fully eliminate the race without file
+  // locking, but shrinks the window to just this write.
+  const latestWorkspaces = loadWorkspaces(configDir);
+  latestWorkspaces[workspace] = { ...existingEntry, tokenEnv: tokenVar };
+  saveWorkspaces(configDir, latestWorkspaces);
 
   console.log(
     `Authorized "${workspace}". Wrote ${tokenVar} to .env and updated ` +
