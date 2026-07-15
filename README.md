@@ -102,7 +102,7 @@ the same config.
    want to refer to this workspace by (e.g. `nextdoordev`); it doesn't need
    to match Slack's own workspace name. If port `51827` is already in use on
    your machine, set `SLACK_MCP_OAUTH_PORT` to a free port and add the
-   matching `http://localhost:<port>/slack/oauth/callback` URL to the app's
+   matching `http://127.0.0.1:<port>/slack/oauth/callback` URL to the app's
    **OAuth & Permissions → Redirect URLs** first.
 
    **Fallback (no browser on this machine, or you'd rather not):** copy the

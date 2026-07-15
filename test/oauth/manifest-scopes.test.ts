@@ -21,7 +21,7 @@ describe("manifest scope consistency", () => {
 
   it("manifest registers the default local redirect URL", () => {
     expect(manifest.oauth_config.redirect_urls).toContain(
-      "http://localhost:51827/slack/oauth/callback"
+      "http://127.0.0.1:51827/slack/oauth/callback"
     );
   });
 });

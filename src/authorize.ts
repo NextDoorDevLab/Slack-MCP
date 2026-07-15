@@ -142,7 +142,7 @@ async function main(): Promise<void> {
   }
 
   const port = Number(process.env.SLACK_MCP_OAUTH_PORT ?? DEFAULT_PORT);
-  const redirectUri = `http://localhost:${port}${CALLBACK_PATH}`;
+  const redirectUri = `http://127.0.0.1:${port}${CALLBACK_PATH}`;
   const state = randomBytes(32).toString("hex");
   const authorizeUrl = buildAuthorizeUrl({
     clientId,
@@ -165,7 +165,7 @@ async function main(): Promise<void> {
     if (code === "EADDRINUSE") {
       console.error(
         `Port ${port} is already in use. Set SLACK_MCP_OAUTH_PORT to a free ` +
-          `port and add the matching http://localhost:<port>${CALLBACK_PATH} ` +
+          `port and add the matching http://127.0.0.1:<port>${CALLBACK_PATH} ` +
           `URL to your Slack app's OAuth & Permissions -> Redirect URLs ` +
           `before retrying.`
       );

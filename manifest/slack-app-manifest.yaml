@@ -3,7 +3,7 @@ display_information:
   description: Send and read Slack messages as yourself, from Claude Code.
 oauth_config:
   redirect_urls:
-    - http://localhost:51827/slack/oauth/callback
+    - http://127.0.0.1:51827/slack/oauth/callback
   scopes:
     user:
       - chat:write
