@@ -2,6 +2,24 @@
   "name": "slack_mcp",
   "version": "0.1.0",
   "description": "Generic MCP server for sending and reading Slack messages as yourself, across multiple workspaces, with directory-based workspace selection.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "slack",
+    "claude",
+    "claude-code",
+    "llm-tools",
+    "ai-agent"
+  ],
+  "homepage": "https://github.com/NextDoorDevLab/slack_mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NextDoorDevLab/slack_mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/NextDoorDevLab/slack_mcp/issues"
+  },
+  "mcpName": "io.github.nextdoordevlab/slack-mcp",
   "type": "module",
   "license": "MIT",
   "bin": {

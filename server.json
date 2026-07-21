@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.nextdoordevlab/slack-mcp",
+  "description": "Generic MCP server for sending and reading Slack messages as yourself, across multiple workspaces, with directory-based workspace selection.",
+  "version": "0.1.0",
+  "repository": {
+    "url": "https://github.com/NextDoorDevLab/slack_mcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/NextDoorDevLab/slack_mcp#readme",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "slack_mcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

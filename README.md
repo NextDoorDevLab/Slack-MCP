@@ -1,5 +1,9 @@
 # slack_mcp
 
+<p align="center">
+  <img src="assets/logo.png" alt="slack_mcp logo — the NDD bracket mark framing a chat bubble" width="180">
+</p>
+
 [![CI](https://github.com/NextDoorDevLab/slack_mcp/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/NextDoorDevLab/slack_mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js 20+](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](package.json)
