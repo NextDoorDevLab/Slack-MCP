@@ -32,9 +32,13 @@ function appendToQueue(
 ) {
   const dir = join(configDir, "queue");
   mkdirSync(dir, { recursive: true, mode: 0o700 });
-  appendFileSync(join(dir, `${workspace}.jsonl`), JSON.stringify(message) + "\n", {
-    mode: 0o600,
-  });
+  appendFileSync(
+    join(dir, `${workspace}.jsonl`),
+    JSON.stringify(message) + "\n",
+    {
+      mode: 0o600,
+    }
+  );
 }
 
 async function startListener(
@@ -119,9 +123,13 @@ async function main() {
   // propagating, so it can't tear down other workspaces' already-live connections.
   await Promise.all(
     names.map((name) =>
-      startListener(name, workspaces[name], configDir).catch((error: unknown) => {
-        console.error(`[slack-mcp-daemon] [${name}] Failed to start: ${error}`);
-      })
+      startListener(name, workspaces[name], configDir).catch(
+        (error: unknown) => {
+          console.error(
+            `[slack-mcp-daemon] [${name}] Failed to start: ${error}`
+          );
+        }
+      )
     )
   );
 }
