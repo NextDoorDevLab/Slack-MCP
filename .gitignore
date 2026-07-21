@@ -4,3 +4,5 @@ dist/
 .env
 .DS_Store
 docs/superpowers/
+.nano-banana-config.json
+generated_imgs/
