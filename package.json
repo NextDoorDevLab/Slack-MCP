@@ -23,7 +23,8 @@
   "type": "module",
   "license": "MIT",
   "bin": {
-    "slack-mcp": "./dist/index.js"
+    "slack-mcp": "./dist/index.js",
+    "slack-mcp-authorize": "./dist/authorize.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -31,6 +32,7 @@
     "dev": "tsx src/index.ts",
     "test": "vitest run",
     "daemon": "tsx daemon/socket-listener.ts",
+    "authorize": "tsx src/authorize.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
@@ -40,6 +42,7 @@
     "@slack/socket-mode": "^2.0.2",
     "@slack/web-api": "^7.8.0",
     "ignore": "^6.0.2",
+    "open": "^10.1.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
@@ -51,6 +54,7 @@
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "typescript-eslint": "^8.15.0",
-    "vitest": "^2.1.0"
+    "vitest": "^2.1.0",
+    "yaml": "^2.6.0"
   }
 }

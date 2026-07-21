@@ -12,6 +12,9 @@ A generic [MCP](https://modelcontextprotocol.io) server for sending and
 reading Slack messages **as yourself**, across one or more workspaces, from
 Claude Code or any MCP client.
 
+> **AI agents:** read [AGENTS.md](AGENTS.md) first — it's a dense setup and
+> usage reference written for automated integration.
+
 ## Why
 
 If you work across several Slack workspaces from different project
@@ -90,10 +93,34 @@ the same config.
    **From an app manifest** → paste the contents of
    `manifest/slack-app-manifest.yaml` → install the app into that workspace.
 
-   Copy the **User OAuth Token** (`xoxp-...`) from the app's
-   **OAuth & Permissions** page.
+   Copy the **Client ID** and **Client Secret** from the app's **Basic
+   Information** page (App Credentials section) into your `.env` as
+   `SLACK_CLIENT_ID_<WORKSPACE>` / `SLACK_CLIENT_SECRET_<WORKSPACE>` (see
+   `.env.example`), then run:
+
+   ```bash
+   npm run authorize -- <workspace-name>
+   ```
+
+   This opens your browser to Slack's authorization page; after you click
+   **Allow**, it writes the resulting user token to `.env` and creates or
+   updates the matching entry in `~/.slack-mcp/workspaces.json` for you —
+   you can skip step 3 below. `<workspace-name>` can be any short name you
+   want to refer to this workspace by (e.g. `nextdoordev`); it doesn't need
+   to match Slack's own workspace name. If port `51827` is already in use on
+   your machine, set `SLACK_MCP_OAUTH_PORT` to a free port and add the
+   matching `http://127.0.0.1:<port>/slack/oauth/callback` URL to the app's
+   **OAuth & Permissions → Redirect URLs** first.
+
+   **Fallback (no browser on this machine, or you'd rather not):** copy the
+   **User OAuth Token** (`xoxp-...`) directly from the app's **OAuth &
+   Permissions** page instead, and continue to step 3 to configure it by
+   hand.
 
 3. **Configure workspaces**
+
+   Skip this step if you used `npm run authorize` in step 2 — it already
+   created or updated this file for you.
 
    Create `~/.slack-mcp/workspaces.json`:
 
@@ -322,8 +349,8 @@ it:
   [`daemon/README.md`](daemon/README.md) for the token-burn risk of wiring
   real-time events to an agent invocation.
 
-If you find a security issue, please open an issue on this repo rather than
-a public discussion thread.
+Found a vulnerability? Please don't open a public issue — see
+[SECURITY.md](SECURITY.md) for how to report it privately.
 
 ## Testing and CI
 
@@ -333,16 +360,14 @@ npm test
 
 Every push and pull request against `master` runs the GitHub Actions
 pipeline in `.github/workflows/ci.yml`: build, lint, format check, and the
-test suite. CI runs these checks on every push and PR, but merging isn't
-blocked on them by default — maintainers should enable a branch protection
-rule on `master` requiring this workflow to pass if that's wanted.
+test suite. `master` is branch-protected — merging requires the CI workflow
+to pass and at least one approving review, enforced even for maintainers.
 
 ## Contributing
 
-Issues and pull requests are welcome. Before opening a PR: run `npm test`,
-`npm run lint`, and `npm run format:check` locally — the same checks CI
-runs. Keep changes focused and add tests for new behavior; this codebase
-favors small, well-tested modules over large ones.
+Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md)
+for local setup, the quality gates CI runs, and the PR workflow. This
+project follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
